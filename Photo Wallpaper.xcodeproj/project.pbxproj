@@ -7,19 +7,19 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		1778038E2F9D142000D2C4E9 /* Photos WallPaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Photos WallPaper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		17C32EFE2F9D5E0D0085F001 /* Photo Wallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Photo Wallpaper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		177803902F9D142000D2C4E9 /* Photos WallPaper */ = {
+		17C32EFF2F9D5E0D0085F001 /* Photo Wallpaper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Photos WallPaper";
+			path = "Photo Wallpaper";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		1778038B2F9D142000D2C4E9 /* Frameworks */ = {
+		17C32EFB2F9D5E0D0085F001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -32,7 +32,7 @@
 		177803852F9D142000D2C4E9 = {
 			isa = PBXGroup;
 			children = (
-				177803902F9D142000D2C4E9 /* Photos WallPaper */,
+				17C32EFF2F9D5E0D0085F001 /* Photo Wallpaper */,
 				1778038F2F9D142000D2C4E9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		1778038F2F9D142000D2C4E9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1778038E2F9D142000D2C4E9 /* Photos WallPaper.app */,
+				17C32EFE2F9D5E0D0085F001 /* Photo Wallpaper.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,26 +48,26 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		1778038D2F9D142000D2C4E9 /* Photos WallPaper */ = {
+		17C32EFD2F9D5E0D0085F001 /* Photo Wallpaper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 177803992F9D142200D2C4E9 /* Build configuration list for PBXNativeTarget "Photos WallPaper" */;
+			buildConfigurationList = 17C32F062F9D5E0F0085F001 /* Build configuration list for PBXNativeTarget "Photo Wallpaper" */;
 			buildPhases = (
-				1778038A2F9D142000D2C4E9 /* Sources */,
-				1778038B2F9D142000D2C4E9 /* Frameworks */,
-				1778038C2F9D142000D2C4E9 /* Resources */,
+				17C32EFA2F9D5E0D0085F001 /* Sources */,
+				17C32EFB2F9D5E0D0085F001 /* Frameworks */,
+				17C32EFC2F9D5E0D0085F001 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				177803902F9D142000D2C4E9 /* Photos WallPaper */,
+				17C32EFF2F9D5E0D0085F001 /* Photo Wallpaper */,
 			);
-			name = "Photos WallPaper";
+			name = "Photo Wallpaper";
 			packageProductDependencies = (
 			);
-			productName = "Photos WallPaper";
-			productReference = 1778038E2F9D142000D2C4E9 /* Photos WallPaper.app */;
+			productName = "Photo Wallpaper";
+			productReference = 17C32EFE2F9D5E0D0085F001 /* Photo Wallpaper.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -80,12 +80,12 @@
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
-					1778038D2F9D142000D2C4E9 = {
+					17C32EFD2F9D5E0D0085F001 = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
 			};
-			buildConfigurationList = 177803892F9D142000D2C4E9 /* Build configuration list for PBXProject "Photos WallPaper" */;
+			buildConfigurationList = 177803892F9D142000D2C4E9 /* Build configuration list for PBXProject "Photo Wallpaper" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,13 +99,13 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1778038D2F9D142000D2C4E9 /* Photos WallPaper */,
+				17C32EFD2F9D5E0D0085F001 /* Photo Wallpaper */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		1778038C2F9D142000D2C4E9 /* Resources */ = {
+		17C32EFC2F9D5E0D0085F001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -115,7 +115,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		1778038A2F9D142000D2C4E9 /* Sources */ = {
+		17C32EFA2F9D5E0D0085F001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -243,16 +243,28 @@
 			};
 			name = Release;
 		};
-		1778039A2F9D142200D2C4E9 /* Debug */ = {
+		17C32F072F9D5E0F0085F001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readonly;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -261,7 +273,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.stuartd.Photos-WallPaper";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.stuartd.Photo-Wallpaper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -273,16 +285,28 @@
 			};
 			name = Debug;
 		};
-		1778039B2F9D142200D2C4E9 /* Release */ = {
+		17C32F082F9D5E0F0085F001 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readonly;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -291,7 +315,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.stuartd.Photos-WallPaper";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.stuartd.Photo-Wallpaper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -306,7 +330,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		177803892F9D142000D2C4E9 /* Build configuration list for PBXProject "Photos WallPaper" */ = {
+		177803892F9D142000D2C4E9 /* Build configuration list for PBXProject "Photo Wallpaper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				177803972F9D142200D2C4E9 /* Debug */,
@@ -315,11 +339,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		177803992F9D142200D2C4E9 /* Build configuration list for PBXNativeTarget "Photos WallPaper" */ = {
+		17C32F062F9D5E0F0085F001 /* Build configuration list for PBXNativeTarget "Photo Wallpaper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1778039A2F9D142200D2C4E9 /* Debug */,
-				1778039B2F9D142200D2C4E9 /* Release */,
+				17C32F072F9D5E0F0085F001 /* Debug */,
+				17C32F082F9D5E0F0085F001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

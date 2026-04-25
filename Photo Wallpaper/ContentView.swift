@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  Photos WallPaper
+//  Photo Wallpaper
 //
 //  Created by Stuart Dunkeld on 25/04/2026.
 //
