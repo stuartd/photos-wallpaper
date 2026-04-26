@@ -8,6 +8,7 @@
 import SwiftUI
 import Photos
 import AppKit
+import Foundation
 
 @main
 struct PhotoWallpaperApp: App {
@@ -41,3 +42,22 @@ func showMessage() {
         print("User confirmed")
     }
 }
+
+/*
+class WallpaperManager: ObservableObject {
+    @Published var isActive: Bool = false
+    
+    private var timer: Timer?
+    
+    func startChangingWallpaper(every interval: TimeInterval) {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            self.changeWallpaper()
+        }
+    }
+
+    func changeWallpaper() {
+        // Pick a random photo and set as desktop wallpaper
+    }
+}
+*/
