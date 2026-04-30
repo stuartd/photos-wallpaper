@@ -14,5 +14,12 @@ class WallpaperManager {
 
     func setRandomPhotoAsWallpaper() {
         // All the logic for requesting access, fetching a photo, saving, and setting wallpaper
+        
+        // placeholder
+        let alert = NSAlert()
+        alert.messageText = "Shuffled!"
+        alert.informativeText = "Wallpaper has been changed."
+        alert.runModal()
+        
     }
 }

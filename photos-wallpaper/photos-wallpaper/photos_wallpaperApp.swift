@@ -6,14 +6,16 @@
 //
 
 import SwiftUI
+import Photos
 
 @main
 struct photos_wallpaperApp: App {
     var body: some Scene {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
             Button("Shuffle Now") {
-                // shuffle()
+                WallpaperManager.shared.setRandomPhotoAsWallpaper()
             }
+        
             
             Divider()
             

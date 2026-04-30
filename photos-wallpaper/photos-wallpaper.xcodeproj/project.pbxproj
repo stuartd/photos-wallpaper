@@ -10,9 +10,22 @@
 		178CB4252FA11B0800933083 /* photos-wallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "photos-wallpaper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		178CB43A2FA3D11A00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PhotoManager.swift,
+			);
+			target = 178CB4242FA11B0800933083 /* photos-wallpaper */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		178CB4272FA11B0800933083 /* photos-wallpaper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				178CB43A2FA3D11A00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */,
+			);
 			path = "photos-wallpaper";
 			sourceTree = "<group>";
 		};
