@@ -11,20 +11,31 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		178CB43A2FA3D11A00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */ = {
+		178CB4412FA3E5BB00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				PhotoManager.swift,
+				.gitignore,
 			);
 			target = 178CB4242FA11B0800933083 /* photos-wallpaper */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		178CB43D2FA3E46200933083 /* Exceptions for "photos-wallpaper" folder in "Compile Sources" phase from "photos-wallpaper" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 178CB4212FA11B0800933083 /* Sources */;
+			membershipExceptions = (
+				Info.plist,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		178CB4272FA11B0800933083 /* photos-wallpaper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				178CB43A2FA3D11A00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */,
+				178CB4412FA3E5BB00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */,
+				178CB43D2FA3E46200933083 /* Exceptions for "photos-wallpaper" folder in "Compile Sources" phase from "photos-wallpaper" target */,
 			);
 			path = "photos-wallpaper";
 			sourceTree = "<group>";
@@ -191,7 +202,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -248,7 +259,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -268,6 +279,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Photos Wallpaper";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -300,6 +312,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Photos Wallpaper";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
