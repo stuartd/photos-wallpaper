@@ -10,17 +10,19 @@ import Photos
 
 @main
 struct photos_wallpaperApp: App {
+    @StateObject private var cycleController = WallpaperCycleController()
+    
     var body: some Scene {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
-            Button("Shuffle Now") {
-                if let asset = PhotoManager.shared.getRandomPhoto() {
-                    let size = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
-                    PhotoManager.shared.requestImage(for: asset, targetSize: size) { image in
-                        if let image = image {
-                            PhotoManager.shared.setImageAsWallpaper(image)
-                        }
-                    }
+            Picker("Cycle", selection: $cycleController.frequency) {
+                ForEach(CycleFrequency.allCases) { freq in
+                    Text(freq.displayName).tag(freq)
                 }
+            }
+            .pickerStyle(.menu)
+            
+            Button("Shuffle Now") {
+                cycleController.triggerNow()
             }
                     
             Divider()
@@ -31,3 +33,4 @@ struct photos_wallpaperApp: App {
         }
     }
 }
+

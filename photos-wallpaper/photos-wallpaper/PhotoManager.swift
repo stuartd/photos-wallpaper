@@ -9,6 +9,7 @@ class PhotoManager {
     
     init() {
         let fetchOptions = PHFetchOptions()
+        // TODO this doesn't use new photos until the app is restarted
         allPhotos = PHAsset.fetchAssets(with: .image, options: fetchOptions)
     }
     

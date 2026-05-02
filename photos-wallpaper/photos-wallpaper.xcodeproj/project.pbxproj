@@ -20,22 +20,11 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		178CB43D2FA3E46200933083 /* Exceptions for "photos-wallpaper" folder in "Compile Sources" phase from "photos-wallpaper" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 178CB4212FA11B0800933083 /* Sources */;
-			membershipExceptions = (
-				Info.plist,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		178CB4272FA11B0800933083 /* photos-wallpaper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				178CB4412FA3E5BB00933083 /* Exceptions for "photos-wallpaper" folder in "photos-wallpaper" target */,
-				178CB43D2FA3E46200933083 /* Exceptions for "photos-wallpaper" folder in "Compile Sources" phase from "photos-wallpaper" target */,
 			);
 			path = "photos-wallpaper";
 			sourceTree = "<group>";
