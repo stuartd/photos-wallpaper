@@ -15,8 +15,25 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+        - uses: actions/checkout@v4  
+
+        - name: Select Xcode version
+          run: sudo xcode-select -s /Applications/Xcode.app
+
+        - name: Build
+          run: |
+            xcodebuild \
+              -project photos-wallpaper.xcodeproj \
+              -scheme photos-wallpaper \
+              -sdk macosx \
+              -configuration Debug \
+              build
+
+        - name: Run tests
+          run: |
+            xcodebuild \
+              -project photos-wallpaper.xcodeproj \
+              -scheme photos-wallpaper \
+              -sdk macosx \
+              -configuration Debug \
+              test
