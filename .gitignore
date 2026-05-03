@@ -65,3 +65,4 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 .DS_Store
+photos-wallpaper.xcodeproj/project.xcworkspace/xcuserdata/stuart.xcuserdatad/UserInterfaceState.xcuserstate
