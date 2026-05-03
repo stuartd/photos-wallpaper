@@ -8,5 +8,8 @@
    Copyright (c) 2026 ___ORGANIZATIONNAME___. All rights reserved.
 -->
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app reads photos from your library so it can choose one and set it as your desktop wallpaper.</string>
+</dict>
 </plist>
