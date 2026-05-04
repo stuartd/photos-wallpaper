@@ -2,10 +2,50 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
+import UserNotifications
+
+private func debugLog(_ message: @autoclosure () -> String) {
+    #if DEBUG
+    print(message())
+    #endif
+}
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
     var frequency: CycleFrequency { get set }
     func triggerNow()
+}
+
+protocol WallpaperCycleNotifying {
+    func notifyNoPhotosAvailable()
+}
+
+final class UserNotificationWallpaperCycleNotifier: WallpaperCycleNotifying {
+    private let center = UNUserNotificationCenter.current()
+
+    func notifyNoPhotosAvailable() {
+        Task {
+            let granted = try? await center.requestAuthorization(options: [.alert, .sound])
+            guard granted == true else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "No Photos Available"
+            content.body = "Add photos to your library so the app can rotate wallpapers."
+            content.sound = .default
+
+            let request = UNNotificationRequest(identifier: "no-photos-available",
+                                                content: content,
+                                                trigger: nil)
+            try? await center.add(request)
+        }
+    }
+}
+
+protocol ScreenProviding {
+    var screens: [NSScreen] { get }
+}
+
+struct AppKitScreenProvider: ScreenProviding {
+    var screens: [NSScreen] { NSScreen.screens }
 }
 
 protocol KeyValueStoring: AnyObject {
@@ -87,21 +127,30 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private let photoManager: PhotoManaging
     private let defaults: KeyValueStoring
+    private let notifier: WallpaperCycleNotifying
+    private let screenProvider: ScreenProviding
     private let timerScheduler: TimerScheduling
     private var timer: CancellableTimer?
+    private var hasNotifiedMissingPhotos = false
 
     /// Restores the saved frequency and starts the repeating timer that drives wallpaper shuffling for the app lifecycle.
     convenience init() {
         self.init(photoManager: PhotoManager.shared,
                   defaults: UserDefaults.standard,
+                  notifier: UserNotificationWallpaperCycleNotifier(),
+                  screenProvider: AppKitScreenProvider(),
                   timerScheduler: FoundationTimerScheduler())
     }
 
     init(photoManager: PhotoManaging,
          defaults: KeyValueStoring,
+         notifier: WallpaperCycleNotifying,
+         screenProvider: ScreenProviding,
          timerScheduler: TimerScheduling) {
         self.photoManager = photoManager
         self.defaults = defaults
+        self.notifier = notifier
+        self.screenProvider = screenProvider
         self.timerScheduler = timerScheduler
         // Read the last saved frequency from user defaults and decode it back into an enum value.
         if let raw = defaults.string(forKey: Self.defaultsKey),
@@ -118,6 +167,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     /// Kicks off an immediate wallpaper refresh from the menu bar without waiting for the next timer fire.
     func triggerNow() {
+        debugLog("WallpaperCycleController: manual wallpaper refresh requested.")
         // Hop onto a main-actor task because the controller and AppKit interactions are main-thread-bound.
         Task { @MainActor in
             // Reuse the same update pipeline the timer uses so manual and automatic shuffles behave the same.
@@ -129,6 +179,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private func scheduleTimer() {
         // Cancel any existing timer before creating a replacement to avoid overlapping schedules.
         timer?.invalidate()
+        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(frequency.seconds)s).")
         // Create a new repeating timer using the currently selected frequency interval.
         timer = timerScheduler.scheduledTimer(interval: frequency.seconds, repeats: true) { [weak self] in
             // Re-enter the main actor before touching controller state or AppKit-bound work.
@@ -147,16 +198,43 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     /// Runs the wallpaper update pipeline by choosing a photo, requesting an image, and handing it off for wallpaper application.
     private func tick() {
-        // Stop early if the photo library fetch returned no available assets.
-        guard let asset = photoManager.getRandomPhoto() else { return }
-        // Use the main screen size as the requested target resolution, with a fallback for safety.
-        let size = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
-        // Ask the photo manager to load an image for the selected asset at the desired size.
-        photoManager.requestImage(for: asset, targetSize: size) { [photoManager] image in
-            // Continue only when the Photos framework successfully produced an image.
-            if let image = image {
-                // Pass the rendered image to the photo manager so it can be written out and set as wallpaper.
-                photoManager.setImageAsWallpaper(image)
+        debugLog("WallpaperCycleController: starting wallpaper cycle.")
+        // Resolve the current display list first so this cycle targets every connected monitor.
+        let screens = screenProvider.screens
+        debugLog("WallpaperCycleController: found \(screens.count) screen(s).")
+        guard !screens.isEmpty else {
+            debugLog("WallpaperCycleController: aborting cycle because no screens were found.")
+            return
+        }
+        // Pick as many distinct photos as possible so each monitor receives its own image for this cycle.
+        let assets = photoManager.getRandomPhotos(count: screens.count)
+        debugLog("WallpaperCycleController: selected \(assets.count) photo asset(s) for \(screens.count) screen(s).")
+        // Notify once when the library cannot provide any photos, then wait for a later successful cycle before notifying again.
+        guard !assets.isEmpty else {
+            if !hasNotifiedMissingPhotos {
+                debugLog("WallpaperCycleController: no photo assets available, posting notification.")
+                notifier.notifyNoPhotosAvailable()
+                hasNotifiedMissingPhotos = true
+            } else {
+                debugLog("WallpaperCycleController: no photo assets available, notification already shown.")
+            }
+            return
+        }
+        hasNotifiedMissingPhotos = false
+        // Request and apply one image per screen using the screen's native pixel size as the target.
+        for (index, pair) in zip(screens, assets).enumerated() {
+            let (screen, asset) = pair
+            let size = screen.frame.size
+            debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
+            photoManager.requestImage(for: asset, targetSize: size) { [photoManager] image in
+                // Continue only when the Photos framework successfully produced an image.
+                if let image = image {
+                    debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
+                    // Pass the rendered image to the photo manager so it can be written out and set as wallpaper.
+                    photoManager.setImageAsWallpaper(image, for: screen)
+                } else {
+                    debugLog("WallpaperCycleController: image request \(index + 1) returned nil.")
+                }
             }
         }
     }

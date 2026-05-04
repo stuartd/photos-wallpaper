@@ -38,7 +38,7 @@ public struct WallpaperOptions {
 
     /// Initializes wallpaper presentation options that are later translated into `NSWorkspace` desktop image settings.
     public init(scaling: NSImageScaling = .scaleProportionallyUpOrDown,
-                allowClipping: Bool = false,
+                allowClipping: Bool = true,
                 fillColor: NSColor? = nil) {
         // Store the requested scaling mode for later conversion into workspace options.
         self.scaling = scaling
