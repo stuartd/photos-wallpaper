@@ -53,7 +53,10 @@ struct PhotosWallpaperTests {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
         let photoManager = FakePhotoManager()
-        let baseScreen = try #require(NSScreen.screens.first)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
         let screens = [baseScreen, baseScreen, baseScreen]
 
         let controller = WallpaperCycleController(
@@ -79,7 +82,10 @@ struct PhotosWallpaperTests {
         let firstAsset = makeFakeAsset()
         let secondAsset = makeFakeAsset()
         let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
-        let baseScreen = try #require(NSScreen.screens.first)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
         let screens = [baseScreen, baseScreen, baseScreen]
 
         let controller = WallpaperCycleController(
@@ -107,7 +113,10 @@ struct PhotosWallpaperTests {
         let scheduler = FakeTimerScheduler()
         let notifier = FakeWallpaperCycleNotifier()
         let photoManager = FakePhotoManager(assetsToReturn: [])
-        let baseScreen = try #require(NSScreen.screens.first)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
 
         let controller = WallpaperCycleController(
             photoManager: photoManager,
@@ -130,7 +139,10 @@ struct PhotosWallpaperTests {
         let scheduler = FakeTimerScheduler()
         let notifier = FakeWallpaperCycleNotifier()
         let photoManager = FakePhotoManager(assetsToReturn: [])
-        let baseScreen = try #require(NSScreen.screens.first)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
 
         let controller = WallpaperCycleController(
             photoManager: photoManager,
