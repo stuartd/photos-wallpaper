@@ -1,15 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-   Info.plist
-   photos-wallpaper
-
-   Created by Stuart Dunkeld on 02/05/2026.
-   Copyright (c) 2026 ___ORGANIZATIONNAME___. All rights reserved.
--->
 <plist version="1.0">
 <dict>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app reads photos from your library so it can choose one and set it as your desktop wallpaper.</string>
+	<string>This app needs to read the photos from your library so it can choose one and set it as your desktop wallpaper.</string>
 </dict>
 </plist>
