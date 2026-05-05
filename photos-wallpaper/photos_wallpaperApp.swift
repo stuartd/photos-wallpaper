@@ -9,36 +9,40 @@ import SwiftUI
 import Photos
 
 @main
+/// The app is just a menu bar extra plus a long-lived controller.
+///
+/// `@StateObject` means SwiftUI creates the controller once for the app lifetime rather than
+/// recreating it every time the menu UI is redrawn.
+///
+/// Quick SwiftUI glossary:
+/// - `App`: the SwiftUI entry point, roughly comparable to the app delegate/bootstrap layer.
+/// - `@StateObject`: "SwiftUI owns this reference-type object and should keep it alive for me."
+/// - `$cycleController.frequency`: a two-way binding, so UI changes update the model and model
+///   changes update the UI.
 struct photos_wallpaperApp: App {
     @StateObject private var cycleController = WallpaperCycleController()
-    
-    /// Builds the menu bar scene that exposes the wallpaper cycle controls and delegates actions into the controller chain.
+    private let historyLogger = WallpaperHistoryLogger()
+
     var body: some Scene {
-        // Create a menu bar extra so the app lives in the macOS menu bar instead of a standard window.
         MenuBarExtra("Wallpaper", systemImage: "photo") {
-            // Present a picker that binds directly to the controller's persisted cycle frequency.
             Picker("Cycle", selection: $cycleController.frequency) {
-                // Render one menu item for each available cycling frequency.
                 ForEach(CycleFrequency.allCases) { freq in
-                    // Show the display name and bind the row to the enum case it represents.
                     Text(freq.displayName).tag(freq)
                 }
             }
-            // Render the picker using standard menu-style presentation in the menu bar popover.
             .pickerStyle(.menu)
-            
-            // Offer a manual shuffle action that bypasses the timer and runs the update chain immediately.
+
             Button("Set wallpaper now") {
-                // Ask the controller to execute the same wallpaper update path used by the scheduled timer.
                 cycleController.triggerNow()
             }
-                    
-            // Visually separate the wallpaper controls from the app lifecycle action below.
+
+            Button("Show wallpaper history") {
+                historyLogger.openHistoryLog()
+            }
+
             Divider()
-            
-            // Provide a quit action so the user can terminate the menu bar app.
+
             Button("Quit") {
-                // Ask AppKit to terminate the application process.
                 NSApplication.shared.terminate(nil)
             }
         }
