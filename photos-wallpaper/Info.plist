@@ -7,6 +7,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs to read the photos from your library so it can choose one and set it as your desktop wallpaper.</string>
+	<string>This app needs to read the photos from your library so it can choose one to set as your desktop wallpaper.</string>
 </dict>
 </plist>
