@@ -17,6 +17,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let logURL: URL
     private let fileManager: FileManager
     private let dateFormatter: DateFormatter
+    private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -33,6 +34,12 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     }
 
     func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
+        writeQueue.sync {
+            writeWallpaperChange(photoName: photoName, screenName: screenName, timestamp: timestamp)
+        }
+    }
+
+    private func writeWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
         do {
             try ensureLogFileExists()
 
@@ -55,7 +62,9 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     /// Ensures the history file exists and opens it in the user's default editor/viewer.
     func openHistoryLog() {
         do {
-            try ensureLogFileExists()
+            try writeQueue.sync {
+                try ensureLogFileExists()
+            }
             NSWorkspace.shared.open(logURL)
         } catch {
             debugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
@@ -70,4 +79,3 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 }
-

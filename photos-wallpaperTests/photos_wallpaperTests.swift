@@ -196,8 +196,9 @@ struct PhotosWallpaperTests {
         )
 
         controller.triggerNow()
-        await Task.yield()
+        let didRecordHistoryEntry = await historyLogger.waitForEntryCount(1)
 
+        #expect(didRecordHistoryEntry)
         #expect(historyLogger.entries.count == 1)
         #expect(historyLogger.entries[0].photoName.contains("IMG_6790.HEIC"))
         #expect(historyLogger.entries[0].photoName.contains("created"))
@@ -299,15 +300,42 @@ private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
 }
 
 private final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
-    private(set) var entries: [(photoName: String, screenName: String, timestamp: Date)] = []
-    private(set) var openCallCount = 0
+    private let lock = NSLock()
+    private var recordedEntries: [(photoName: String, screenName: String, timestamp: Date)] = []
+    private var recordedOpenCallCount = 0
+
+    var entries: [(photoName: String, screenName: String, timestamp: Date)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedEntries
+    }
+
+    var openCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedOpenCallCount
+    }
 
     func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
-        entries.append((photoName: photoName, screenName: screenName, timestamp: timestamp))
+        lock.lock()
+        recordedEntries.append((photoName: photoName, screenName: screenName, timestamp: timestamp))
+        lock.unlock()
     }
 
     func openHistoryLog() {
-        openCallCount += 1
+        lock.lock()
+        recordedOpenCallCount += 1
+        lock.unlock()
+    }
+
+    func waitForEntryCount(_ count: Int) async -> Bool {
+        for _ in 0..<100 {
+            if entries.count >= count {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
     }
 }
 
