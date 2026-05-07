@@ -236,7 +236,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         for (index, pair) in zip(screens, assets).enumerated() {
             let (screen, asset) = pair
             let size = screen.frame.size
-            let photoName = photoManager.displayName(for: asset)
             let screenName = "Monitor \(index + 1)"
             debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
             // The completion closure is marked `@escaping` in the protocol, which means Photos may
@@ -245,9 +244,13 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 if let image = image {
                     debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
                     if photoManager.setImageAsWallpaper(image, for: screen) {
-                        historyLogger.recordWallpaperChange(photoName: photoName,
-                                                            screenName: screenName,
-                                                            timestamp: Date())
+                        // Move filename lookup off the main thread; no caching.
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let photoName = photoManager.displayName(for: asset)
+                            historyLogger.recordWallpaperChange(photoName: photoName,
+                                                                screenName: screenName,
+                                                                timestamp: Date())
+                        }
                     }
                 } else {
                     debugLog("WallpaperCycleController: image request \(index + 1) returned nil.")

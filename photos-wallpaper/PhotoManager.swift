@@ -58,7 +58,21 @@ final class PhotoManager: PhotoManaging {
     /// technical fallback for exact disambiguation.
     func displayName(for asset: PHAsset) -> String {
         let identifierSuffix = "id: \(asset.localIdentifier)"
-        if let filename = PHAssetResource.assetResources(for: asset).first?.originalFilename {
+
+        // Perform the potentially expensive filename lookup off the main thread to avoid
+        // Photos.framework fetching on demand on the main queue.
+        let filename: String? = {
+            let fetch: () -> String? = {
+                PHAssetResource.assetResources(for: asset).first?.originalFilename
+            }
+            if Thread.isMainThread {
+                return DispatchQueue.global(qos: .userInitiated).sync(execute: fetch)
+            } else {
+                return fetch()
+            }
+        }()
+
+        if let filename = filename {
             if let creationDate = asset.creationDate {
                 return "\(filename) (created \(Self.historyAssetDateFormatter.string(from: creationDate)), \(identifierSuffix))"
             }
