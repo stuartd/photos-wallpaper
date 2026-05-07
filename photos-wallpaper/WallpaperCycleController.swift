@@ -4,12 +4,6 @@ import AppKit
 import Combine
 import UserNotifications
 
-private func debugLog(_ message: @autoclosure () -> String) {
-    #if DEBUG
-    print(message())
-    #endif
-}
-
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
     var frequency: CycleFrequency { get set }
     func triggerNow()
@@ -262,3 +256,4 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
     }
 }
+

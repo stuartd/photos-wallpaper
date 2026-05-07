@@ -6,7 +6,7 @@ protocol WallpaperHistoryLogging {
     func openHistoryLog()
 }
 
-private func historyDebugLog(_ message: @autoclosure () -> String) {
+func debugLog(_ message: @autoclosure () -> String) {
     #if DEBUG
     print(message())
     #endif
@@ -36,7 +36,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         do {
             try ensureLogFileExists()
 
-            let line = "\(photoName) was shown on \(screenName) at \(dateFormatter.string(from: timestamp))\n"
+            let line = "\(photoName) was shown on \(screenName) on \(dateFormatter.string(from: timestamp))\n"
             if fileManager.fileExists(atPath: logURL.path) {
                 let handle = try FileHandle(forWritingTo: logURL)
                 defer { try? handle.close() }
@@ -48,7 +48,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
                 try line.write(to: logURL, atomically: true, encoding: .utf8)
             }
         } catch {
-            historyDebugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
         }
     }
 
@@ -58,7 +58,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             try ensureLogFileExists()
             NSWorkspace.shared.open(logURL)
         } catch {
-            historyDebugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
         }
     }
 
@@ -70,3 +70,4 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 }
+

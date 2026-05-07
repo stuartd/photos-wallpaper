@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Photos
+import AppKit
 
 @main
 /// The app is just a menu bar extra plus a long-lived controller.
@@ -22,6 +23,7 @@ import Photos
 struct photos_wallpaperApp: App {
     @StateObject private var cycleController = WallpaperCycleController()
     private let historyLogger = WallpaperHistoryLogger()
+    private let documentOpener = AppDocumentOpener()
 
     var body: some Scene {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
@@ -38,6 +40,17 @@ struct photos_wallpaperApp: App {
 
             Button("Show wallpaper history") {
                 historyLogger.openHistoryLog()
+            }
+
+            Divider()
+
+            Button("About Photos Wallpaper") {
+                NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+
+            Button("Privacy") {
+                documentOpener.openPrivacyDocument()
             }
 
             Divider()

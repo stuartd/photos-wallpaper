@@ -2,12 +2,6 @@ import Foundation
 import Photos
 import AppKit
 
-private func debugLog(_ message: @autoclosure () -> String) {
-    #if DEBUG
-    print(message())
-    #endif
-}
-
 protocol PhotoManaging: AnyObject {
     func getRandomPhotos(count: Int) -> [PHAsset]
     func displayName(for asset: PHAsset) -> String
