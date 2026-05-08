@@ -85,7 +85,7 @@ struct PhotosWallpaperTests {
             return
         }
 
-        let controller = WallpaperCycleController(
+        _ = WallpaperCycleController(
             photoManager: photoManager,
             defaults: defaults,
             historyLogger: FakeWallpaperHistoryLogger(),
@@ -458,5 +458,6 @@ private struct FakeScreenProvider: ScreenProviding {
 /// layout for identity comparisons inside tests. This is intentionally test-only and should never
 /// appear in production code.
 private func makeFakeAsset() -> PHAsset {
-    unsafeBitCast(NSObject(), to: PHAsset.self)
+    let object: AnyObject = NSObject()
+    return unsafeBitCast(object, to: PHAsset.self)
 }
