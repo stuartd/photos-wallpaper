@@ -168,7 +168,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 ///
 /// Responsibilities:
 /// - remember the user's chosen schedule
-/// - run a repeating timer
+/// - install the right timer, login, or wake trigger
 /// - map screens to photo assets
 /// - trigger notification/UI side effects when the library is empty
 ///
@@ -188,7 +188,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         didSet {
             // Persist the newly selected frequency so the next launch resumes the same schedule.
             defaults.set(frequency.rawValue, forKey: Self.defaultsKey)
-            // Rebuild the timer so the new interval takes effect immediately.
+            // Rebuild the schedule trigger so the new frequency takes effect immediately.
             rescheduleTimer()
         }
     }
@@ -241,12 +241,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     /// Runs one wallpaper cycle immediately.
     ///
-    /// This is used by the menu command and intentionally shares the exact same pipeline as the
-    /// repeating timer.
+    /// This is used by the menu command and intentionally shares the same refresh pipeline as
+    /// scheduled and wake-triggered cycles.
     func triggerNow() {
         debugLog("WallpaperCycleController: manual wallpaper refresh requested.")
-        // `Task {}` starts an async unit of work. Here it is mostly a clean way to hop back into
-        // the controller's main-actor-isolated context before doing AppKit work.
+        // `Task {}` starts an async unit of work while keeping the refresh on the main actor.
         Task { @MainActor in
             self.tick()
         }

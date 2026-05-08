@@ -105,13 +105,14 @@ final class PhotoManager: PhotoManaging {
         let tempDir = FileManager.default.temporaryDirectory
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let screenIdentifier = screenNumber?.stringValue ?? UUID().uuidString
+        let screenDescription = screenNumber.map { "display ID \($0)" } ?? "unknown display"
         let tempURL = tempDir.appendingPathComponent("tempWallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
 
         // AppKit image conversion is a little old-school: NSImage -> TIFF -> bitmap rep -> JPEG.
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let jpegData = bitmap.representation(using: .jpeg, properties: [:]) else {
-            debugLog("PhotoManager: failed to convert image into JPEG data for screen \(screenIdentifier).")
+            debugLog("PhotoManager: failed to convert image into JPEG data for \(screenDescription).")
             return false
         }
 
@@ -119,10 +120,10 @@ final class PhotoManager: PhotoManaging {
             try jpegData.write(to: tempURL)
             debugLog("PhotoManager: wrote temporary wallpaper file to \(tempURL.path).")
             try wallpaperManager.setWallpaper(for: screen, to: tempURL, options: WallpaperOptions())
-            debugLog("PhotoManager: wallpaper applied successfully to screen \(screenIdentifier).")
+            debugLog("PhotoManager: wallpaper applied successfully to \(screenDescription).")
             return true
         } catch {
-            debugLog("PhotoManager: failed to set wallpaper on screen \(screenIdentifier): \(error)")
+            debugLog("PhotoManager: failed to set wallpaper on \(screenDescription): \(error)")
             return false
         }
     }

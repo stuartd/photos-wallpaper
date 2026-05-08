@@ -454,9 +454,9 @@ private struct FakeScreenProvider: ScreenProviding {
 
 /// Tests only need unique object identity, not a real Photos asset.
 ///
-/// `PHAsset` has no convenient public initializer, so the fake uses an object with the same memory
-/// layout for identity comparisons inside tests. This is intentionally test-only and should never
-/// appear in production code.
+/// `PHAsset` has no convenient public initializer for this use case, so the fake bit-casts an
+/// Objective-C object reference. It is only valid for identity comparisons; do not call Photos APIs
+/// on values returned from this helper.
 private func makeFakeAsset() -> PHAsset {
     let object: AnyObject = NSObject()
     return unsafeBitCast(object, to: PHAsset.self)
