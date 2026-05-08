@@ -62,6 +62,43 @@ protocol CancellableTimer: AnyObject {
 
 extension Timer: CancellableTimer {}
 
+protocol WakeEventObservation: AnyObject {
+    func invalidate()
+}
+
+protocol WakeEventObserving {
+    func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation
+}
+
+final class NotificationWakeEventObservation: WakeEventObservation {
+    private let center: NotificationCenter
+    private var token: NSObjectProtocol?
+
+    init(center: NotificationCenter, token: NSObjectProtocol) {
+        self.center = center
+        self.token = token
+    }
+
+    func invalidate() {
+        if let token {
+            center.removeObserver(token)
+            self.token = nil
+        }
+    }
+}
+
+struct AppKitWakeEventObserver: WakeEventObserving {
+    func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation {
+        let center = NSWorkspace.shared.notificationCenter
+        let token = center.addObserver(forName: NSWorkspace.didWakeNotification,
+                                       object: nil,
+                                       queue: .main) { _ in
+            handler()
+        }
+        return NotificationWakeEventObservation(center: center, token: token)
+    }
+}
+
 protocol TimerScheduling {
     func scheduledTimer(interval: TimeInterval, repeats: Bool, block: @escaping () -> Void) -> CancellableTimer
 }
@@ -76,32 +113,54 @@ struct FoundationTimerScheduler: TimerScheduling {
 }
 
 enum CycleFrequency: String, CaseIterable, Identifiable {
-    case second
+    struct Option {
+        let frequency: CycleFrequency
+        let displayName: String
+        let seconds: TimeInterval?
+    }
+
+    case onLogin
+    case onWakeup
+    case fiveSeconds
     case minute
+    case fiveMinutes
+    case fifteenMinutes
+    case thirtyMinutes
     case hour
     case day
+
+    static let allCases: [CycleFrequency] = options.map(\.frequency)
+
+    static let options: [Option] = [
+        Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
+        Option(frequency: .onWakeup, displayName: "On Wakeup", seconds: nil),
+        Option(frequency: .fiveSeconds, displayName: "Every 5 seconds", seconds: 5),
+        Option(frequency: .minute, displayName: "Every minute", seconds: 60),
+        Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
+        Option(frequency: .fifteenMinutes, displayName: "Every 15 minutes", seconds: 15 * 60),
+        Option(frequency: .thirtyMinutes, displayName: "Every 30 minutes", seconds: 30 * 60),
+        Option(frequency: .hour, displayName: "Every hour", seconds: 60 * 60),
+        Option(frequency: .day, displayName: "Every day", seconds: 60 * 60 * 24)
+    ]
 
     /// Stable identifier for SwiftUI list/picker bindings.
     var id: String { rawValue }
 
-    /// Timer interval used by the wallpaper cycle scheduler.
-    var seconds: TimeInterval {
-        switch self {
-        case .second: return 1
-        case .minute: return 60
-        case .hour: return 60 * 60
-        case .day: return 60 * 60 * 24
-        }
+    /// Timer interval used by the wallpaper cycle scheduler. Event-based modes do not have one.
+    var seconds: TimeInterval? {
+        option.seconds
     }
 
     /// User-facing label shown in the menu bar picker.
     var displayName: String {
-        switch self {
-        case .second: return "Every second"
-        case .minute: return "Every minute"
-        case .hour: return "Every hour"
-        case .day: return "Every day"
+        option.displayName
+    }
+
+    private var option: Option {
+        guard let option = Self.options.first(where: { $0.frequency == self }) else {
+            preconditionFailure("Missing cycle frequency option for \(self).")
         }
+        return option
     }
 }
 
@@ -141,6 +200,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let screenProvider: ScreenProviding
     private let timerScheduler: TimerScheduling
     private var timer: CancellableTimer?
+    private let wakeEventObserver: WakeEventObserving
+    private var wakeObservation: WakeEventObservation?
     private var hasNotifiedMissingPhotos = false
 
     /// Production initializer used by the app.
@@ -150,6 +211,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   historyLogger: WallpaperHistoryLogger(),
                   notifier: UserNotificationWallpaperCycleNotifier(),
                   screenProvider: AppKitScreenProvider(),
+                  wakeEventObserver: AppKitWakeEventObserver(),
                   timerScheduler: FoundationTimerScheduler())
     }
 
@@ -159,12 +221,14 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          historyLogger: WallpaperHistoryLogging,
          notifier: WallpaperCycleNotifying,
          screenProvider: ScreenProviding,
+         wakeEventObserver: WakeEventObserving,
          timerScheduler: TimerScheduling) {
         self.photoManager = photoManager
         self.defaults = defaults
         self.historyLogger = historyLogger
         self.notifier = notifier
         self.screenProvider = screenProvider
+        self.wakeEventObserver = wakeEventObserver
         self.timerScheduler = timerScheduler
         if let raw = defaults.string(forKey: Self.defaultsKey),
            let f = CycleFrequency(rawValue: raw) {
@@ -172,7 +236,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         } else {
             self.frequency = .hour
         }
-        scheduleTimer()
+        scheduleCycleTrigger()
     }
 
     /// Runs one wallpaper cycle immediately.
@@ -188,21 +252,39 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Replaces any existing timer with one based on the current frequency.
-    private func scheduleTimer() {
+    /// Replaces any existing schedule trigger with one based on the current frequency.
+    private func scheduleCycleTrigger() {
         timer?.invalidate()
-        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(frequency.seconds)s).")
-        timer = timerScheduler.scheduledTimer(interval: frequency.seconds, repeats: true) { [weak self] in
-            // `[weak self]` avoids the timer retaining the controller forever. Without that, the
-            // controller and timer can keep each other alive even if the app wanted to release one.
-            Task { @MainActor [weak self] in
-                self?.tick()
+        timer = nil
+        wakeObservation?.invalidate()
+        wakeObservation = nil
+
+        switch frequency {
+        case .onLogin:
+            debugLog("WallpaperCycleController: scheduling one wallpaper cycle for login.")
+            tick()
+        case .onWakeup:
+            debugLog("WallpaperCycleController: observing system wake notifications.")
+            wakeObservation = wakeEventObserver.observeWake { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.tick()
+                }
+            }
+        case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
+            guard let seconds = frequency.seconds else { return }
+            debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(seconds)s).")
+            timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
+                // `[weak self]` avoids the timer retaining the controller forever. Without that, the
+                // controller and timer can keep each other alive even if the app wanted to release one.
+                Task { @MainActor [weak self] in
+                    self?.tick()
+                }
             }
         }
     }
 
     private func rescheduleTimer() {
-        scheduleTimer()
+        scheduleCycleTrigger()
     }
 
     /// Executes one full wallpaper refresh across every connected display.
@@ -259,4 +341,3 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
     }
 }
-

@@ -22,9 +22,20 @@ import Testing
 /// - fake/mock/test double: a small stand-in object used to observe calls without touching real
 ///   system APIs.
 struct PhotosWallpaperTests {
+    @Test func cycleFrequencyAllCasesComeFromConfiguredOptions() {
+        #expect(CycleFrequency.allCases == CycleFrequency.options.map(\.frequency))
+    }
+
+    @Test func cycleFrequencyPropertiesComeFromConfiguredOptions() {
+        for option in CycleFrequency.options {
+            #expect(option.frequency.displayName == option.displayName)
+            #expect(option.frequency.seconds == option.seconds)
+        }
+    }
+
     @Test func loadsSavedFrequencyAndSchedulesTimer() {
         let defaults = FakeDefaults()
-        defaults.storage["cycleFrequency"] = CycleFrequency.minute.rawValue
+        defaults.storage["cycleFrequency"] = CycleFrequency.fifteenMinutes.rawValue
         let scheduler = FakeTimerScheduler()
 
         let controller = WallpaperCycleController(
@@ -33,11 +44,13 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
-        #expect(controller.frequency == .minute)
-        #expect(scheduler.scheduledIntervals == [CycleFrequency.minute.seconds])
+        #expect(controller.frequency == .fifteenMinutes)
+        let expectedIntervals: [TimeInterval] = [15 * 60]
+        #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
     @Test func changingFrequencyPersistsValueAndReschedulesTimer() {
@@ -49,6 +62,7 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -57,7 +71,65 @@ struct PhotosWallpaperTests {
 
         #expect(defaults.storage["cycleFrequency"] == CycleFrequency.day.rawValue)
         #expect(originalTimer.invalidateCallCount == 1)
-        #expect(scheduler.scheduledIntervals == [CycleFrequency.hour.seconds, CycleFrequency.day.seconds])
+        let expectedIntervals: [TimeInterval] = [60 * 60, 60 * 60 * 24]
+        #expect(scheduler.scheduledIntervals == expectedIntervals)
+    }
+
+    @Test func onLoginRunsOneWallpaperCycleWithoutSchedulingTimer() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+        await Task.yield()
+
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func onWakeupRunsWallpaperCycleWhenWakeEventFires() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onWakeup.rawValue
+        let scheduler = FakeTimerScheduler()
+        let wakeObserver = FakeWakeEventObserver()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: wakeObserver,
+            timerScheduler: scheduler
+        )
+
+        #expect(controller.frequency == .onWakeup)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+
+        wakeObserver.fireWakeEvent()
+        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
+
+        #expect(didAssignWallpaper)
+        #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
     @Test func triggerNowAssignsWallpaperPerScreen() async {
@@ -78,6 +150,7 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: screens),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -108,6 +181,7 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: screens),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -139,6 +213,7 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: notifier,
             screenProvider: FakeScreenProvider(screens: [baseScreen, baseScreen, baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -166,6 +241,7 @@ struct PhotosWallpaperTests {
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: notifier,
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -192,6 +268,7 @@ struct PhotosWallpaperTests {
             historyLogger: historyLogger,
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
 
@@ -257,6 +334,16 @@ private final class FakePhotoManager: PhotoManaging {
         wallpaperAssignments.append((image: image, screen: screen))
         return shouldSucceedSettingWallpaper
     }
+
+    func waitForWallpaperAssignmentCount(_ count: Int) async -> Bool {
+        for _ in 0..<100 {
+            if wallpaperAssignments.count >= count {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
+    }
 }
 
 private final class FakeDefaults: KeyValueStoring {
@@ -288,6 +375,28 @@ private final class FakeTimerScheduler: TimerScheduling {
         let timer = FakeTimer()
         createdTimers.append(timer)
         return timer
+    }
+}
+
+private final class FakeWakeObservation: WakeEventObservation {
+    private(set) var invalidateCallCount = 0
+
+    func invalidate() {
+        invalidateCallCount += 1
+    }
+}
+
+private final class FakeWakeEventObserver: WakeEventObserving {
+    private var handler: (() -> Void)?
+    private(set) var observation = FakeWakeObservation()
+
+    func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation {
+        self.handler = handler
+        return observation
+    }
+
+    func fireWakeEvent() {
+        handler?()
     }
 }
 
