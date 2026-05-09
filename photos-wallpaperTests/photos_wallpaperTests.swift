@@ -33,6 +33,13 @@ struct PhotosWallpaperTests {
         }
     }
 
+    #if DEBUG
+    @Test func debugBuildIncludesOneSecondStressTestFrequency() {
+        #expect(CycleFrequency.oneSecond.displayName == "Every second")
+        #expect(CycleFrequency.oneSecond.seconds == 1)
+    }
+    #endif
+
     @Test func loadsSavedFrequencyAndSchedulesTimer() {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.fifteenMinutes.rawValue

@@ -121,6 +121,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     case onLogin
     case onWakeup
+    #if DEBUG
+    case oneSecond
+    #endif
     case fiveSeconds
     case minute
     case fiveMinutes
@@ -131,17 +134,23 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     static let allCases: [CycleFrequency] = options.map(\.frequency)
 
-    static let options: [Option] = [
-        Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
-        Option(frequency: .onWakeup, displayName: "On Wakeup", seconds: nil),
-        Option(frequency: .fiveSeconds, displayName: "Every 5 seconds", seconds: 5),
-        Option(frequency: .minute, displayName: "Every minute", seconds: 60),
-        Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
-        Option(frequency: .fifteenMinutes, displayName: "Every 15 minutes", seconds: 15 * 60),
-        Option(frequency: .thirtyMinutes, displayName: "Every 30 minutes", seconds: 30 * 60),
-        Option(frequency: .hour, displayName: "Every hour", seconds: 60 * 60),
-        Option(frequency: .day, displayName: "Every day", seconds: 60 * 60 * 24)
-    ]
+    static let options: [Option] = {
+        var options = [
+            Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
+            Option(frequency: .onWakeup, displayName: "On Wakeup", seconds: nil),
+            Option(frequency: .fiveSeconds, displayName: "Every 5 seconds", seconds: 5),
+            Option(frequency: .minute, displayName: "Every minute", seconds: 60),
+            Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
+            Option(frequency: .fifteenMinutes, displayName: "Every 15 minutes", seconds: 15 * 60),
+            Option(frequency: .thirtyMinutes, displayName: "Every 30 minutes", seconds: 30 * 60),
+            Option(frequency: .hour, displayName: "Every hour", seconds: 60 * 60),
+            Option(frequency: .day, displayName: "Every day", seconds: 60 * 60 * 24)
+        ]
+        #if DEBUG
+        options.append(Option(frequency: .oneSecond, displayName: "Every second", seconds: 1))
+        #endif
+        return options
+    }()
 
     /// Stable identifier for SwiftUI list/picker bindings.
     var id: String { rawValue }
@@ -270,14 +279,22 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
-            guard let seconds = frequency.seconds else { return }
-            debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(seconds)s).")
-            timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
-                // `[weak self]` avoids the timer retaining the controller forever. Without that, the
-                // controller and timer can keep each other alive even if the app wanted to release one.
-                Task { @MainActor [weak self] in
-                    self?.tick()
-                }
+            scheduleTimerTrigger()
+        #if DEBUG
+        case .oneSecond:
+            scheduleTimerTrigger()
+        #endif
+        }
+    }
+
+    private func scheduleTimerTrigger() {
+        guard let seconds = frequency.seconds else { return }
+        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(seconds)s).")
+        timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
+            // `[weak self]` avoids the timer retaining the controller forever. Without that, the
+            // controller and timer can keep each other alive even if the app wanted to release one.
+            Task { @MainActor [weak self] in
+                self?.tick()
             }
         }
     }
