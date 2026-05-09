@@ -47,7 +47,9 @@ struct photos_wallpaperApp: App {
             Button("About Photos Wallpaper") {
                 DispatchQueue.main.async {
                     NSApplication.shared.activate(ignoringOtherApps: true)
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                        .credits: NSAttributedString(string: "Photos Wallpaper, assembled by Stuart Dunkeld and his AI assistants for Rose Hill Solutions.")
+                    ])
                 }
             }
 
