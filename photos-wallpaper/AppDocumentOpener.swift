@@ -22,20 +22,20 @@ final class AppDocumentOpener: AppDocumentOpening {
             return
         }
 
-        // Convert markdown to attributed string (monterey+). If conversion fails, fall back to plain text.
-        let attributed: NSAttributedString
-        if let md = try? AttributedString(markdown: markdownText) {
-            attributed = NSAttributedString(md)
-        } else {
-            attributed = NSAttributedString(string: markdownText)
-        }
+        let attributed = makePrivacyAttributedString(from: markdownText)
 
         // Create and present a simple read-only window with scrollable text view
-        let textView = NSTextView(frame: .zero)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 700, height: 800))
         textView.isEditable = false
+        textView.isSelectable = true
         textView.usesAdaptiveColorMappingForDarkAppearance = true
         textView.textStorage?.setAttributedString(attributed)
         textView.drawsBackground = true
+        textView.textContainerInset = NSSize(width: 24, height: 24)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
 
         let scrollView = NSScrollView(frame: .zero)
         scrollView.hasVerticalScroller = true
@@ -72,5 +72,58 @@ final class AppDocumentOpener: AppDocumentOpening {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func makePrivacyAttributedString(from markdownText: String) -> NSAttributedString {
+        let output = NSMutableAttributedString()
+        let bodyFont = NSFont.preferredFont(forTextStyle: .body)
+        let bodyColor = NSColor.labelColor
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.paragraphSpacing = 8
+        paragraphStyle.lineSpacing = 2
+
+        for rawLine in markdownText.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else {
+                output.append(NSAttributedString(string: "\n"))
+                continue
+            }
+
+            let text: String
+            let font: NSFont
+            let paragraphSpacing: CGFloat
+
+            if line.hasPrefix("# ") {
+                text = String(line.dropFirst(2))
+                font = NSFont.boldSystemFont(ofSize: 26)
+                paragraphSpacing = 14
+            } else if line.hasPrefix("## ") {
+                text = String(line.dropFirst(3))
+                font = NSFont.boldSystemFont(ofSize: 18)
+                paragraphSpacing = 10
+            } else if line.hasPrefix("- ") {
+                text = "• " + line.dropFirst(2)
+                font = bodyFont
+                paragraphSpacing = 4
+            } else {
+                text = line
+                font = bodyFont
+                paragraphSpacing = 8
+            }
+
+            let style = paragraphStyle.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+            style.paragraphSpacing = paragraphSpacing
+
+            output.append(NSAttributedString(
+                string: text.replacingOccurrences(of: "`", with: "") + "\n",
+                attributes: [
+                    .font: font,
+                    .foregroundColor: bodyColor,
+                    .paragraphStyle: style
+                ]
+            ))
+        }
+
+        return output
     }
 }

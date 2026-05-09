@@ -45,8 +45,10 @@ struct photos_wallpaperApp: App {
             Divider()
 
             Button("About Photos Wallpaper") {
-                NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
-                NSApplication.shared.activate(ignoringOtherApps: true)
+                DispatchQueue.main.async {
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
+                }
             }
 
             Button("Privacy") {
