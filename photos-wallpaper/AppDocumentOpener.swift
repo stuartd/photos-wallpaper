@@ -2,12 +2,72 @@ import Foundation
 import AppKit
 
 protocol AppDocumentOpening {
+    func openAboutPanel()
     func openPrivacyDocument()
 }
 
 final class AppDocumentOpener: AppDocumentOpening {
     // Keep a strong reference to the window so it isn't deallocated immediately
     private var privacyWindow: NSWindow?
+
+    func openAboutPanel() {
+        let iconView = NSImageView(image: NSApp.applicationIconImage)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+
+        let titleLabel = NSTextField(labelWithString: "Photos Wallpaper")
+        titleLabel.font = .boldSystemFont(ofSize: 24)
+        titleLabel.alignment = .center
+
+        let versionLabel = NSTextField(labelWithString: "Version 1.0")
+        versionLabel.font = .systemFont(ofSize: 13)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.alignment = .center
+        
+        // TODO - properly, not just blank lines
+
+        let creditsLabel = NSTextField(wrappingLabelWithString: """
+        © Stuart Dunkeld 2026
+        Rose Hill Solutions
+        
+        
+        
+        
+        
+        """)
+
+        creditsLabel.font = .systemFont(ofSize: 13)
+        creditsLabel.alignment = .center
+        creditsLabel.maximumNumberOfLines = 0
+
+        let stackView = NSStackView(views: [iconView, titleLabel, versionLabel, creditsLabel])
+        stackView.orientation = .vertical
+        stackView.alignment = .centerX
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+
+        let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 330, height: 205))
+        accessoryView.addSubview(stackView)
+
+        NSLayoutConstraint.activate([
+            iconView.widthAnchor.constraint(equalToConstant: 128),
+            iconView.heightAnchor.constraint(equalToConstant: 128),
+            creditsLabel.widthAnchor.constraint(equalToConstant: 300),
+            stackView.centerXAnchor.constraint(equalTo: accessoryView.centerXAnchor),
+            stackView.centerYAnchor.constraint(equalTo: accessoryView.centerYAnchor),
+            stackView.widthAnchor.constraint(lessThanOrEqualTo: accessoryView.widthAnchor)
+        ])
+
+        let alert = NSAlert()
+        alert.messageText = ""
+        alert.informativeText = ""
+        alert.icon = NSImage(size: NSSize(width: 1, height: 1))
+        alert.accessoryView = accessoryView
+        alert.addButton(withTitle: "OK")
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
 
     func openPrivacyDocument() {
         // Locate the PRIVACY.md in the app bundle

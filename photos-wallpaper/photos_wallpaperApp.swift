@@ -22,6 +22,7 @@ import AppKit
 ///   changes update the UI.
 struct photos_wallpaperApp: App {
     @StateObject private var cycleController = WallpaperCycleController()
+    @State private var isAboutPanelOpen = false
     private let historyLogger = WallpaperHistoryLogger()
     private let documentOpener = AppDocumentOpener()
 
@@ -33,29 +34,31 @@ struct photos_wallpaperApp: App {
                 }
             }
             .pickerStyle(.menu)
+            .disabled(isAboutPanelOpen)
 
             Button("Set wallpaper now") {
                 cycleController.triggerNow()
             }
+            .disabled(isAboutPanelOpen)
 
             Button("Show wallpaper history") {
                 historyLogger.openHistoryLog()
             }
+            .disabled(isAboutPanelOpen)
 
             Divider()
 
             Button("About Photos Wallpaper") {
-                DispatchQueue.main.async {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
-                        .credits: NSAttributedString(string: "Photos Wallpaper, assembled by Stuart Dunkeld and his AI assistants for Rose Hill Solutions.")
-                    ])
-                }
+                isAboutPanelOpen = true
+                defer { isAboutPanelOpen = false }
+                documentOpener.openAboutPanel()
             }
+            .disabled(isAboutPanelOpen)
 
             Button("Privacy") {
                 documentOpener.openPrivacyDocument()
             }
+            .disabled(isAboutPanelOpen)
 
             Divider()
 
