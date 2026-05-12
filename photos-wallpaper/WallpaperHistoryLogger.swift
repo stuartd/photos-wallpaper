@@ -29,7 +29,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
 
         let formatter = DateFormatter()
         formatter.dateStyle = .long
-        formatter.timeStyle = .short
+        formatter.timeStyle = .medium
         self.dateFormatter = formatter
     }
 
