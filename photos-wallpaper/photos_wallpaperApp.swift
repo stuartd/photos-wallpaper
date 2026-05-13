@@ -36,7 +36,7 @@ struct photos_wallpaperApp: App {
             .pickerStyle(.menu)
             .disabled(isAboutPanelOpen)
 
-            Button("Set wallpaper now") {
+            Button("Change wallpaper now") {
                 cycleController.triggerNow()
             }
             .disabled(isAboutPanelOpen)
