@@ -22,19 +22,23 @@ import AppKit
 ///   changes update the UI.
 struct photos_wallpaperApp: App {
     @StateObject private var cycleController = WallpaperCycleController()
+    @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
     private let historyLogger = WallpaperHistoryLogger()
     private let documentOpener = AppDocumentOpener()
 
     var body: some Scene {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
-            Picker("Cycle", selection: $cycleController.frequency) {
+            Picker("Cycle", selection: frequencyBinding) {
                 ForEach(CycleFrequency.allCases) { freq in
                     Text(freq.displayName).tag(freq)
                 }
             }
             .pickerStyle(.menu)
             .disabled(isAboutPanelOpen)
+
+            Toggle("Start at Login", isOn: startAtLoginBinding)
+                .disabled(isAboutPanelOpen)
 
             Button("Change wallpaper now") {
                 cycleController.triggerNow()
@@ -66,5 +70,22 @@ struct photos_wallpaperApp: App {
                 NSApplication.shared.terminate(nil)
             }
         }
+    }
+
+    private var frequencyBinding: Binding<CycleFrequency> {
+        Binding(
+            get: { cycleController.frequency },
+            set: { newFrequency in
+                cycleController.frequency = newFrequency
+                loginItemManager.promptToEnableIfUseful(for: newFrequency)
+            }
+        )
+    }
+
+    private var startAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { loginItemManager.isEnabled },
+            set: { loginItemManager.setEnabled($0) }
+        )
     }
 }
