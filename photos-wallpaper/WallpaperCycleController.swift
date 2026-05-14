@@ -137,7 +137,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     static let options: [Option] = {
         var options = [
             Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
-            Option(frequency: .onWakeup, displayName: "On Wakeup", seconds: nil),
+            Option(frequency: .onWakeup, displayName: "On Wake", seconds: nil),
             Option(frequency: .fiveSeconds, displayName: "Every 5 seconds", seconds: 5),
             Option(frequency: .minute, displayName: "Every minute", seconds: 60),
             Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
