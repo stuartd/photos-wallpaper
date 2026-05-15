@@ -2,8 +2,14 @@ import Foundation
 import Photos
 import AppKit
 
+enum PhotoSelectionResult {
+    case photos([PHAsset])
+    case waitingForAuthorization
+    case unavailable
+}
+
 protocol PhotoManaging: AnyObject {
-    func getRandomPhotos(count: Int) -> [PHAsset]
+    func getRandomPhotos(count: Int) -> PhotoSelectionResult
     func displayName(for asset: PHAsset) -> String
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
@@ -22,32 +28,41 @@ final class PhotoManager: PhotoManaging {
     static let shared = PhotoManager()
 
     private let wallpaperManager: WallpaperManaging
-    private var allPhotos: PHFetchResult<PHAsset>
+    private var allPhotos: PHFetchResult<PHAsset>?
+    private var hasRequestedPhotoAccess = false
 
     init(wallpaperManager: WallpaperManaging = WallpaperManager()) {
         self.wallpaperManager = wallpaperManager
-        allPhotos = Self.fetchAllPhotos()
     }
 
     /// Returns one asset per screen.
     ///
     /// If there are fewer assets than screens, the last selected asset is reused so every display
     /// still receives a wallpaper for this cycle.
-    func getRandomPhotos(count: Int) -> [PHAsset] {
-        refreshPhotos()
-        guard count > 0, allPhotos.count > 0 else {
-            debugLog("PhotoManager: no photos available for count \(count). Library count: \(allPhotos.count).")
-            return []
+    func getRandomPhotos(count: Int) -> PhotoSelectionResult {
+        switch refreshPhotos() {
+        case .ready:
+            break
+        case .waitingForAuthorization:
+            return .waitingForAuthorization
+        case .unavailable:
+            return .unavailable
         }
-        debugLog("PhotoManager: selecting photos for \(count) screen(s) from \(allPhotos.count) library asset(s).")
-        let selectionCount = min(count, allPhotos.count)
-        let selectedIndexes = Array(0..<allPhotos.count).shuffled().prefix(selectionCount)
+
+        let photosCount = allPhotos?.count ?? 0
+        guard count > 0, let allPhotos, photosCount > 0 else {
+            debugLog("PhotoManager: no photos available for count \(count). Library count: \(photosCount).")
+            return .unavailable
+        }
+        debugLog("PhotoManager: selecting photos for \(count) screen(s) from \(photosCount) library asset(s).")
+        let selectionCount = min(count, photosCount)
+        let selectedIndexes = Array(0..<photosCount).shuffled().prefix(selectionCount)
         var selectedPhotos = selectedIndexes.map { allPhotos.object(at: $0) }
         if let fallbackPhoto = selectedPhotos.last, selectedPhotos.count < count {
             selectedPhotos.append(contentsOf: Array(repeating: fallbackPhoto, count: count - selectedPhotos.count))
         }
         debugLog("PhotoManager: returning \(selectedPhotos.count) photo asset(s).")
-        return selectedPhotos
+        return .photos(selectedPhotos)
     }
 
     /// Returns a human-friendly label that is still unique enough to disambiguate duplicates.
@@ -87,9 +102,13 @@ final class PhotoManager: PhotoManaging {
     /// app mostly uses direct method calls.
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
         debugLog("PhotoManager: requesting image for asset \(asset.localIdentifier) at \(Int(targetSize.width))x\(Int(targetSize.height)).")
+        
         let options = PHImageRequestOptions()
         options.isSynchronous = false
         options.deliveryMode = .highQualityFormat
+        // Many real libraries keep originals in iCloud. Allow Photos to download when needed rather
+        // than treating cloud-only assets as random nil image requests.
+        options.isNetworkAccessAllowed = true
 
         PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
             debugLog("PhotoManager: image request for asset \(asset.localIdentifier) completed with image: \(image != nil).")
@@ -102,11 +121,10 @@ final class PhotoManager: PhotoManaging {
     /// `NSWorkspace` wants a file URL rather than raw image bytes, so this method materializes a
     /// temporary file even though the image already exists in memory.
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
-        let tempDir = FileManager.default.temporaryDirectory
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let screenIdentifier = screenNumber?.stringValue ?? UUID().uuidString
         let screenDescription = screenNumber.map { "display ID \($0)" } ?? "unknown display"
-        let tempURL = tempDir.appendingPathComponent("tempWallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
+        let wallpaperURL = wallpaperFileURL(forScreenIdentifier: screenIdentifier)
 
         // AppKit image conversion is a little old-school: NSImage -> TIFF -> bitmap rep -> JPEG.
         guard let tiffData = image.tiffRepresentation,
@@ -117,9 +135,10 @@ final class PhotoManager: PhotoManaging {
         }
 
         do {
-            try jpegData.write(to: tempURL)
-            debugLog("PhotoManager: wrote temporary wallpaper file to \(tempURL.path).")
-            try wallpaperManager.setWallpaper(for: screen, to: tempURL, options: WallpaperOptions())
+            try FileManager.default.createDirectory(at: wallpaperURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try jpegData.write(to: wallpaperURL)
+            debugLog("PhotoManager: wrote wallpaper file to \(wallpaperURL.path).")
+            try wallpaperManager.setWallpaper(for: screen, to: wallpaperURL, options: WallpaperOptions())
             debugLog("PhotoManager: wallpaper applied successfully to \(screenDescription).")
             return true
         } catch {
@@ -128,17 +147,80 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
+    private enum PhotoRefreshResult {
+        case ready
+        case waitingForAuthorization
+        case unavailable
+    }
+
+    private func wallpaperFileURL(forScreenIdentifier screenIdentifier: String) -> URL {
+        let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        return applicationSupport
+            .appendingPathComponent("photos-wallpaper", isDirectory: true)
+            .appendingPathComponent("current-wallpaper-\(screenIdentifier).jpg")
+    }
+
     /// Re-runs the Photos fetch each cycle so permission changes and new library contents are seen
     /// without restarting the menu bar app.
-    private func refreshPhotos() {
-        allPhotos = Self.fetchAllPhotos()
-        debugLog("PhotoManager: refreshed library fetch. Current image asset count: \(allPhotos.count).")
+    private func refreshPhotos() -> PhotoRefreshResult {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            allPhotos = Self.fetchAllPhotos()
+            debugLog("PhotoManager: refreshed library fetch. Current image asset count: \(allPhotos?.count ?? 0). Photos authorization: \(Self.photoAuthorizationDescription).")
+            return .ready
+        case .notDetermined:
+            // Do not fetch before the user answers the system prompt. A pending permission request is
+            // different from an empty library and should not trigger a "no photos" notification.
+            requestPhotoAccessIfNeeded()
+            debugLog("PhotoManager: waiting for Photos authorization before fetching assets.")
+            return .waitingForAuthorization
+        case .denied, .restricted:
+            allPhotos = nil
+            debugLog("PhotoManager: cannot fetch photos. Photos authorization: \(Self.photoAuthorizationDescription).")
+            return .unavailable
+        @unknown default:
+            allPhotos = nil
+            debugLog("PhotoManager: cannot fetch photos. Photos authorization: unknown.")
+            return .unavailable
+        }
+    }
+
+    private func requestPhotoAccessIfNeeded() {
+        guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined else { return }
+        guard !hasRequestedPhotoAccess else { return }
+        hasRequestedPhotoAccess = true
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+            debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
+        }
     }
 
     /// Returns every image asset the app is currently allowed to see.
     private static func fetchAllPhotos() -> PHFetchResult<PHAsset> {
         let fetchOptions = PHFetchOptions()
         return PHAsset.fetchAssets(with: .image, options: fetchOptions)
+    }
+
+    private static var photoAuthorizationDescription: String {
+        photoAuthorizationDescription(for: PHPhotoLibrary.authorizationStatus(for: .readWrite))
+    }
+
+    private static func photoAuthorizationDescription(for status: PHAuthorizationStatus) -> String {
+        switch status {
+        case .authorized:
+            return "authorized"
+        case .limited:
+            return "limited"
+        case .denied:
+            return "denied"
+        case .restricted:
+            return "restricted"
+        case .notDetermined:
+            return "notDetermined"
+        @unknown default:
+            return "unknown"
+        }
     }
 
     private static let historyAssetDateFormatter: DateFormatter = {

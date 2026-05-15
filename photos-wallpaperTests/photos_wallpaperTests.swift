@@ -310,18 +310,18 @@ private final class FakePhotoManager: PhotoManaging {
         }
     }
 
-    func getRandomPhotos(count: Int) -> [PHAsset] {
+    func getRandomPhotos(count: Int) -> PhotoSelectionResult {
         requestedPhotoCount = count
-        guard !assetsToReturn.isEmpty else { return [] }
+        guard !assetsToReturn.isEmpty else { return .unavailable }
         if assetsToReturn.count >= count {
-            return Array(assetsToReturn.prefix(count))
+            return .photos(Array(assetsToReturn.prefix(count)))
         }
 
         var assets = assetsToReturn
         if let fallbackAsset = assets.last {
             assets.append(contentsOf: Array(repeating: fallbackAsset, count: count - assets.count))
         }
-        return assets
+        return .photos(assets)
     }
 
     func displayName(for asset: PHAsset) -> String {

@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
+import Photos
 import UserNotifications
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
@@ -315,7 +316,16 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: aborting cycle because no screens were found.")
             return
         }
-        let assets = photoManager.getRandomPhotos(count: screens.count)
+        let assets: [PHAsset]
+        switch photoManager.getRandomPhotos(count: screens.count) {
+        case .photos(let selectedAssets):
+            assets = selectedAssets
+        case .waitingForAuthorization:
+            debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
+            return
+        case .unavailable:
+            assets = []
+        }
         debugLog("WallpaperCycleController: selected \(assets.count) photo asset(s) for \(screens.count) screen(s).")
         guard !assets.isEmpty else {
             if !hasNotifiedMissingPhotos {
