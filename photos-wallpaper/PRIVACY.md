@@ -11,13 +11,15 @@ The app requests access to your Photos library so it can choose images and use t
 The app stores:
 
 - your selected wallpaper cycle frequency
+- whether the app should start at login, if you enable that option in macOS
 - a local wallpaper history log
+- a local runtime diagnostics log
 
-The history log is written to:
+The wallpaper history log is written to:
 
 - `~/Library/Application Support/photos-wallpaper/wallpaper-history.log`
 
-That log may include:
+That history log may include:
 
 - photo filename
 - photo creation date
@@ -25,12 +27,25 @@ That log may include:
 - monitor number
 - timestamp when the wallpaper was applied
 
+The runtime diagnostics log is written to:
+
+- `~/Library/Application Support/photos-wallpaper/runtime.log`
+
+That diagnostics log may include:
+
+- wallpaper cycle timing and schedule changes
+- Photos library asset counts and selected Photos asset identifiers
+- temporary wallpaper file paths
+- success or failure messages from wallpaper updates
+- app errors useful for troubleshooting
+
 ## What The App Does Not Do
 
 The app does not:
 
 - upload your photos
 - upload your wallpaper history
+- upload your runtime diagnostics log
 - create an online account
 - send your data to a server
 - use analytics or advertising services
@@ -39,7 +54,7 @@ The app does not:
 
 All processing happens locally on your Mac.
 
-The app reads image data from your Photos library, asks macOS to set desktop wallpaper, and writes the local history log described above.
+The app reads image data from your Photos library, asks macOS to set desktop wallpaper, and writes the local history and diagnostics logs described above.
 
 ## Permissions
 

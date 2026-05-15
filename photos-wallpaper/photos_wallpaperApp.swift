@@ -25,6 +25,7 @@ struct photos_wallpaperApp: App {
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
     private let historyLogger = WallpaperHistoryLogger()
+    private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
 
     var body: some Scene {
@@ -49,6 +50,13 @@ struct photos_wallpaperApp: App {
                 historyLogger.openHistoryLog()
             }
             .disabled(isAboutPanelOpen)
+
+            #if DEBUG
+            Button("Show app log") {
+                runtimeLogger.openRuntimeLog()
+            }
+            .disabled(isAboutPanelOpen)
+            #endif
 
             Divider()
 
