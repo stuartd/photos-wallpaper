@@ -50,8 +50,7 @@ final class LoginItemManager: ObservableObject {
         refreshStatus()
     }
 
-    /// Offers Start at Login only after the user chooses a schedule where quitting/restarting the
-    /// Mac would otherwise silently stop wallpaper rotation.
+    /// Offers Start at Login only after the user chooses a timed schedule where a restart would otherwise  stop rotation.
     func promptToEnableIfUseful(for frequency: CycleFrequency) {
         refreshStatus()
         guard shouldSuggestLoginItem(for: frequency), !isEnabled else { return }
@@ -59,7 +58,7 @@ final class LoginItemManager: ObservableObject {
 
         let alert = NSAlert()
         alert.messageText = "Start Photos Wallpaper at login?"
-        alert.informativeText = "Wallpaper rotation only continues after restart if the app starts automatically."
+        alert.informativeText = "Wallpaper rotation can only continue after a shutdown or restart if the app starts automatically."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Start at Login")
         alert.addButton(withTitle: "Not Now")

@@ -31,7 +31,7 @@ jobs:
               -scheme photos-wallpaper \
               -sdk macosx \
               -configuration Debug \
-              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY=- \
               build
 
         - name: Run tests
@@ -42,5 +42,5 @@ jobs:
               -sdk macosx \
               -configuration Debug \
               -destination 'platform=macOS' \
-              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY=- \
               test
