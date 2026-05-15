@@ -116,10 +116,10 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    /// Writes a rendered image to a temporary JPEG file and applies it to one screen.
+    /// Writes a rendered image to the app's wallpaper cache and applies it to one screen.
     ///
     /// `NSWorkspace` wants a file URL rather than raw image bytes, so this method materializes a
-    /// temporary file even though the image already exists in memory.
+    /// JPEG file even though the image already exists in memory.
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let screenIdentifier = screenNumber?.stringValue ?? UUID().uuidString

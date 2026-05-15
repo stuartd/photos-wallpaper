@@ -139,6 +139,41 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
+    @Test func triggerNowSkipsWhilePreviousCycleIsStillRunning() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager(completesImageRequestsImmediately: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+
+        photoManager.completePendingImageRequests()
+        await Task.yield()
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 2)
+    }
+
     @Test func triggerNowAssignsWallpaperPerScreen() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -165,7 +200,7 @@ struct PhotosWallpaperTests {
         await Task.yield()
 
         #expect(photoManager.requestedPhotoCount == 3)
-        #expect(photoManager.requestedSizes == screens.map(\.frame.size))
+        #expect(photoManager.requestedSizes == screens.map { $0.testPixelSize })
         #expect(photoManager.wallpaperAssignments.count == 3)
         #expect(photoManager.wallpaperAssignments.map(\.screen) == screens)
     }
@@ -294,15 +329,21 @@ struct PhotosWallpaperTests {
 private final class FakePhotoManager: PhotoManaging {
     private let assetsToReturn: [PHAsset]
     private let assetNames: [ObjectIdentifier: String]
+    private let completesImageRequestsImmediately: Bool
+    private var pendingImageCompletions: [(NSImage?) -> Void] = []
+    private(set) var getRandomPhotosCallCount = 0
     private(set) var requestedPhotoCount = 0
     private(set) var requestedAssets: [PHAsset] = []
     private(set) var requestedSizes: [CGSize] = []
     private(set) var wallpaperAssignments: [(image: NSImage, screen: NSScreen)] = []
     var shouldSucceedSettingWallpaper = true
 
-    init(assetsToReturn: [PHAsset]? = nil, assetNames: [String]? = nil) {
+    init(assetsToReturn: [PHAsset]? = nil,
+         assetNames: [String]? = nil,
+         completesImageRequestsImmediately: Bool = true) {
         let assets = assetsToReturn ?? (0..<8).map { _ in makeFakeAsset() }
         self.assetsToReturn = assets
+        self.completesImageRequestsImmediately = completesImageRequestsImmediately
         if let assetNames {
             self.assetNames = Dictionary(uniqueKeysWithValues: zip(assets.map(ObjectIdentifier.init), assetNames))
         } else {
@@ -311,6 +352,7 @@ private final class FakePhotoManager: PhotoManaging {
     }
 
     func getRandomPhotos(count: Int) -> PhotoSelectionResult {
+        getRandomPhotosCallCount += 1
         requestedPhotoCount = count
         guard !assetsToReturn.isEmpty else { return .unavailable }
         if assetsToReturn.count >= count {
@@ -334,7 +376,19 @@ private final class FakePhotoManager: PhotoManaging {
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
         requestedAssets.append(asset)
         requestedSizes.append(targetSize)
-        completion(NSImage(size: targetSize))
+        if completesImageRequestsImmediately {
+            completion(NSImage(size: targetSize))
+        } else {
+            pendingImageCompletions.append(completion)
+        }
+    }
+
+    func completePendingImageRequests() {
+        let completions = pendingImageCompletions
+        pendingImageCompletions.removeAll()
+        for completion in completions {
+            completion(NSImage(size: CGSize(width: 1, height: 1)))
+        }
     }
 
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
@@ -457,6 +511,13 @@ private final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
 
 private struct FakeScreenProvider: ScreenProviding {
     let screens: [NSScreen]
+}
+
+private extension NSScreen {
+    var testPixelSize: CGSize {
+        CGSize(width: frame.size.width * backingScaleFactor,
+               height: frame.size.height * backingScaleFactor)
+    }
 }
 
 /// Tests only need unique object identity, not a real Photos asset.

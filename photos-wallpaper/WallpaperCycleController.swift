@@ -213,6 +213,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
     private var hasNotifiedMissingPhotos = false
+    private var isCycleInProgress = false
+    private var pendingImageRequests = 0
 
     /// Production initializer used by the app.
     convenience init() {
@@ -309,11 +311,17 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     /// The method stays on the main actor because it touches AppKit screen objects and because the
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
     private func tick() {
+        guard !isCycleInProgress else {
+            debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
+            return
+        }
+        isCycleInProgress = true
         debugLog("WallpaperCycleController: starting wallpaper cycle.")
         let screens = screenProvider.screens
         debugLog("WallpaperCycleController: found \(screens.count) screen(s).")
         guard !screens.isEmpty else {
             debugLog("WallpaperCycleController: aborting cycle because no screens were found.")
+            finishCycle()
             return
         }
         let assets: [PHAsset]
@@ -322,6 +330,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             assets = selectedAssets
         case .waitingForAuthorization:
             debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
+            finishCycle()
             return
         case .unavailable:
             assets = []
@@ -335,20 +344,28 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             } else {
                 debugLog("WallpaperCycleController: no photo assets available, notification already shown.")
             }
+            finishCycle()
             return
         }
         hasNotifiedMissingPhotos = false
 
         // `zip` pairs screens with assets 1:1. The request itself is async, so each screen continues
         // independently after this loop starts the image fetches.
-        for (index, pair) in zip(screens, assets).enumerated() {
+        let screenAssetPairs = Array(zip(screens, assets).enumerated())
+        pendingImageRequests = screenAssetPairs.count
+        for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
-            let size = screen.frame.size
+            let size = screen.pixelSize
             let screenName = "Monitor \(index + 1)"
             debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
             // The completion closure is marked `@escaping` in the protocol, which means Photos may
             // call it later after this function has already returned.
-            photoManager.requestImage(for: asset, targetSize: size) { [photoManager, historyLogger] image in
+            photoManager.requestImage(for: asset, targetSize: size) { [weak self, photoManager, historyLogger] image in
+                defer {
+                    Task { @MainActor [weak self] in
+                        self?.completeImageRequest()
+                    }
+                }
                 if let image = image {
                     debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
                     if photoManager.setImageAsWallpaper(image, for: screen) {
@@ -365,5 +382,24 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         }
+    }
+
+    private func completeImageRequest() {
+        pendingImageRequests -= 1
+        if pendingImageRequests <= 0 {
+            finishCycle()
+        }
+    }
+
+    private func finishCycle() {
+        pendingImageRequests = 0
+        isCycleInProgress = false
+    }
+}
+
+private extension NSScreen {
+    var pixelSize: CGSize {
+        CGSize(width: frame.size.width * backingScaleFactor,
+               height: frame.size.height * backingScaleFactor)
     }
 }
