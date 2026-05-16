@@ -123,7 +123,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     case onLogin
     case onWakeup
     #if DEBUG
-    case oneSecond
+    case oneSecond // debug only as intended to be used for stress tests, not as an actual option
     #endif
     case fiveSeconds
     case minute

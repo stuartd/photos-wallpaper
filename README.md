@@ -6,4 +6,4 @@ This functionality is no longer available in macOS 26 (Tahoe) [^2], so this appl
 
 [^1]: [This web page](https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) has some information about the original rotating wallpaper functionality (archived [here](https://web.archive.org/web/20260509151722/https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) and [here](http://archive.today/7snxw))
 
-[^2]: You can set the wallpaper source to a _folder_ but that's not the same.
+[^2]: You can set the wallpaper source to a _folder_ in macOS 26 but that's not the same.
