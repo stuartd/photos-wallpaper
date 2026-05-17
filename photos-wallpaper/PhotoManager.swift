@@ -158,7 +158,7 @@ final class PhotoManager: PhotoManaging {
             ?? FileManager.default.homeDirectoryForCurrentUser
         return applicationSupport
             .appendingPathComponent("photos-wallpaper", isDirectory: true)
-            .appendingPathComponent("current-wallpaper-\(screenIdentifier).jpg")
+            .appendingPathComponent("current-wallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
     }
 
     /// Re-runs the Photos fetch each cycle so permission changes and new library contents are seen
