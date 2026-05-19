@@ -28,8 +28,10 @@ final class PhotoManager: PhotoManaging {
     static let shared = PhotoManager()
 
     private let wallpaperManager: WallpaperManaging
+    private let wallpaperCacheLock = NSLock()
     private var allPhotos: PHFetchResult<PHAsset>?
     private var hasRequestedPhotoAccess = false
+    private var activeWallpaperFilenamesByScreen = [String: String]()
 
     init(wallpaperManager: WallpaperManaging = WallpaperManager()) {
         self.wallpaperManager = wallpaperManager
@@ -122,7 +124,7 @@ final class PhotoManager: PhotoManaging {
     /// JPEG file even though the image already exists in memory.
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
-        let screenIdentifier = screenNumber?.stringValue ?? UUID().uuidString
+        let screenIdentifier = self.screenIdentifier(for: screen)
         let screenDescription = screenNumber.map { "display ID \($0)" } ?? "unknown display"
         let wallpaperURL = wallpaperFileURL(forScreenIdentifier: screenIdentifier)
 
@@ -136,9 +138,15 @@ final class PhotoManager: PhotoManaging {
 
         do {
             try FileManager.default.createDirectory(at: wallpaperURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try jpegData.write(to: wallpaperURL)
+            try jpegData.write(to: wallpaperURL, options: .atomic)
             debugLog("PhotoManager: wrote wallpaper file to \(wallpaperURL.path).")
             try wallpaperManager.setWallpaper(for: screen, to: wallpaperURL, options: WallpaperOptions())
+            wallpaperCacheLock.lock()
+            defer { wallpaperCacheLock.unlock() }
+            activeWallpaperFilenamesByScreen[screenIdentifier] = wallpaperURL.lastPathComponent
+            if activeWallpaperFilenamesByScreen.count >= NSScreen.screens.count {
+                removeStaleWallpaperCacheFiles()
+            }
             debugLog("PhotoManager: wallpaper applied successfully to \(screenDescription).")
             return true
         } catch {
@@ -153,12 +161,52 @@ final class PhotoManager: PhotoManaging {
         case unavailable
     }
 
+    private func screenIdentifier(for screen: NSScreen) -> String {
+        if let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            return screenNumber.stringValue
+        }
+
+        let frame = screen.frame
+        return "unknown-\(Int(frame.origin.x))-\(Int(frame.origin.y))-\(Int(frame.width))x\(Int(frame.height))"
+    }
+
     private func wallpaperFileURL(forScreenIdentifier screenIdentifier: String) -> URL {
+        wallpaperCacheDirectoryURL()
+            .appendingPathComponent("current-wallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
+    }
+
+    private func wallpaperCacheDirectoryURL() -> URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
         return applicationSupport
             .appendingPathComponent("photos-wallpaper", isDirectory: true)
-            .appendingPathComponent("current-wallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
+    }
+
+    private func removeStaleWallpaperCacheFiles() {
+        let cacheDirectory = wallpaperCacheDirectoryURL()
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: cacheDirectory,
+                                                                          includingPropertiesForKeys: nil) else {
+            return
+        }
+
+        let activeWallpaperFilenames = Set(activeWallpaperFilenamesByScreen.values)
+        for url in contents where isGeneratedWallpaperCacheFile(url) && !activeWallpaperFilenames.contains(url.lastPathComponent) {
+            removeWallpaperCacheFile(url)
+        }
+    }
+
+    private func isGeneratedWallpaperCacheFile(_ url: URL) -> Bool {
+        let filename = url.lastPathComponent
+        return filename.hasPrefix("current-wallpaper-") && filename.hasSuffix(".jpg")
+    }
+
+    private func removeWallpaperCacheFile(_ url: URL) {
+        do {
+            try FileManager.default.removeItem(at: url)
+            debugLog("PhotoManager: removed stale wallpaper cache file at \(url.path).")
+        } catch {
+            debugLog("PhotoManager: failed to remove stale wallpaper cache file at \(url.path): \(error).")
+        }
     }
 
     /// Re-runs the Photos fetch each cycle so permission changes and new library contents are seen

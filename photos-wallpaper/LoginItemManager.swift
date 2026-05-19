@@ -85,7 +85,7 @@ final class LoginItemManager: ObservableObject {
 
     private func showLoginItemError(_ error: Error) {
         let alert = NSAlert()
-        alert.messageText = "Couldn’t change login setting"
+        alert.messageText = "Couldn’t change 'start at login' setting"
         alert.informativeText = "Photos Wallpaper could not update whether it starts automatically. You can manage this in System Settings > General > Login Items & Extensions.\n\n\(error.localizedDescription)"
         alert.alertStyle = .warning
         alert.runModal()

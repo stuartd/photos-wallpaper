@@ -19,7 +19,7 @@ final class AppDocumentOpener: AppDocumentOpening {
         titleLabel.font = .boldSystemFont(ofSize: 24)
         titleLabel.alignment = .center
 
-        let versionLabel = NSTextField(labelWithString: "Version 1.0")
+        let versionLabel = NSTextField(labelWithString: aboutVersionText)
         versionLabel.font = .systemFont(ofSize: 13)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .center
@@ -132,6 +132,11 @@ final class AppDocumentOpener: AppDocumentOpening {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private var aboutVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        return "Version \(version) (commit d374b57)"
     }
 
     private func makePrivacyAttributedString(from markdownText: String) -> NSAttributedString {
