@@ -51,12 +51,10 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isAboutPanelOpen)
 
-            #if DEBUG
-            Button("Show app log") {
+            Button("Show Diagnostic Log") {
                 runtimeLogger.openRuntimeLog()
             }
             .disabled(isAboutPanelOpen)
-            #endif
 
             Divider()
 

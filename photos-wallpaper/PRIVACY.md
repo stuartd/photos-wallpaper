@@ -4,7 +4,7 @@
 
 ## What The App Accesses
 
-The app requests access to your Photos library so it can choose images and use them as desktop wallpaper.
+The app requests access to your Photos library so it can choose random images to use them as desktop wallpaper. It reads images only and does not modify your Photos library.
 
 ## What The App Stores
 

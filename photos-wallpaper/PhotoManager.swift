@@ -211,6 +211,9 @@ final class PhotoManager: PhotoManaging {
 
     /// Re-runs the Photos fetch each cycle so permission changes and new library contents are seen
     /// without restarting the menu bar app.
+    ///
+    /// PhotoKit has no read-only access level for existing assets: reading library photos uses
+    /// `.readWrite`. This app only fetches and renders images; it never writes to the Photos library.
     private func refreshPhotos() -> PhotoRefreshResult {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {
