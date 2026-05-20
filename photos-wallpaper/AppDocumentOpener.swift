@@ -136,7 +136,18 @@ final class AppDocumentOpener: AppDocumentOpening {
 
     private var aboutVersionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        return "Version \(version) (commit d374b57)"
+        var details: [String] = []
+        if let commit = Bundle.main.object(forInfoDictionaryKey: "GitCommit") as? String,
+           !commit.isEmpty,
+           !commit.hasPrefix("$(") {
+            details.append("commit \(commit)")
+        }
+        #if DEBUG
+        details.append("debug build")
+        #endif
+
+        guard !details.isEmpty else { return "Version \(version)" }
+        return "Version \(version) (\(details.joined(separator: ", ")))"
     }
 
     private func makePrivacyAttributedString(from markdownText: String) -> NSAttributedString {
