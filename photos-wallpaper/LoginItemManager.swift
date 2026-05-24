@@ -56,6 +56,8 @@ struct AppKitStartAtLoginPromptPresenter: StartAtLoginPromptPresenting {
 /// - login item: an app macOS launches automatically after the user signs in.
 @MainActor
 final class LoginItemManager: ObservableObject {
+    private static let promptDeclineCountDefaultsKey = "startAtLoginPromptDeclineCount"
+    private static let maximumAutomaticPromptDeclineCount = 2
     private static let legacyDismissedPromptDefaultsKey = "dismissedStartAtLoginPrompt"
     private static let legacyDismissedPromptScheduleDefaultsKey = "dismissedStartAtLoginPromptSchedule"
 
@@ -103,17 +105,21 @@ final class LoginItemManager: ObservableObject {
         refreshStatus()
         guard !isEnabled else { return }
         guard !dismissedPromptThisSession else { return }
+        guard defaults.integer(forKey: Self.promptDeclineCountDefaultsKey) < Self.maximumAutomaticPromptDeclineCount else { return }
 
         switch promptPresenter.askToEnableStartAtLogin() {
         case .enable:
             setEnabled(true)
         case .notNow:
             dismissedPromptThisSession = true
+            defaults.set(defaults.integer(forKey: Self.promptDeclineCountDefaultsKey) + 1,
+                         forKey: Self.promptDeclineCountDefaultsKey)
         }
     }
 
     private func clearPromptDismissal() {
         dismissedPromptThisSession = false
+        defaults.set(0, forKey: Self.promptDeclineCountDefaultsKey)
         clearLegacyPromptDismissal()
     }
 

@@ -74,7 +74,7 @@ struct PhotosWallpaperTests {
         #expect(manager.isEnabled)
     }
 
-    @Test func newSessionAsksAgainAfterDismissingStartAtLoginPrompt() {
+    @Test func newSessionAsksOnceMoreAfterFirstStartAtLoginPromptDecline() {
         let defaults = FakeDefaults()
         let firstPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
         let secondPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.enable])
@@ -90,14 +90,46 @@ struct PhotosWallpaperTests {
                                              promptPresenter: secondPromptPresenter)
         secondManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.day.rawValue)
 
+        #expect(defaults.integer(forKey: "startAtLoginPromptDeclineCount") == 0)
         #expect(firstPromptPresenter.askCallCount == 1)
         #expect(secondPromptPresenter.askCallCount == 1)
         #expect(loginItemService.registerCallCount == 1)
         #expect(secondManager.isEnabled)
     }
 
+    @Test func twoStartAtLoginPromptDeclinesStopFutureAutomaticPrompts() {
+        let defaults = FakeDefaults()
+        let firstPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
+        let secondPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
+        let thirdPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.enable])
+        let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
+
+        let firstManager = LoginItemManager(defaults: defaults,
+                                            loginItemService: loginItemService,
+                                            promptPresenter: firstPromptPresenter)
+        firstManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.hour.rawValue)
+
+        let secondManager = LoginItemManager(defaults: defaults,
+                                             loginItemService: loginItemService,
+                                             promptPresenter: secondPromptPresenter)
+        secondManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.day.rawValue)
+
+        let thirdManager = LoginItemManager(defaults: defaults,
+                                            loginItemService: loginItemService,
+                                            promptPresenter: thirdPromptPresenter)
+        thirdManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.minute.rawValue)
+
+        #expect(defaults.integer(forKey: "startAtLoginPromptDeclineCount") == 2)
+        #expect(firstPromptPresenter.askCallCount == 1)
+        #expect(secondPromptPresenter.askCallCount == 1)
+        #expect(thirdPromptPresenter.askCallCount == 0)
+        #expect(loginItemService.registerCallCount == 0)
+        #expect(!thirdManager.isEnabled)
+    }
+
     @Test func manuallyEnablingStartAtLoginClearsDismissal() {
         let defaults = FakeDefaults()
+        defaults.set(2, forKey: "startAtLoginPromptDeclineCount")
         defaults.set(CycleFrequency.hour.rawValue, forKey: "dismissedStartAtLoginPromptSchedule")
         defaults.set(true, forKey: "dismissedStartAtLoginPrompt")
         let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
@@ -108,6 +140,7 @@ struct PhotosWallpaperTests {
 
         manager.setEnabled(true)
 
+        #expect(defaults.integer(forKey: "startAtLoginPromptDeclineCount") == 0)
         #expect(defaults.string(forKey: "dismissedStartAtLoginPromptSchedule") == nil)
         #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt") == false)
         #expect(loginItemService.registerCallCount == 1)
@@ -509,6 +542,10 @@ private final class FakeDefaults: KeyValueStoring {
 
     func bool(forKey defaultName: String) -> Bool {
         storage[defaultName] as? Bool ?? false
+    }
+
+    func integer(forKey defaultName: String) -> Int {
+        storage[defaultName] as? Int ?? 0
     }
 
     func set(_ value: Any?, forKey defaultName: String) {
