@@ -3,6 +3,45 @@ import AppKit
 import Combine
 import ServiceManagement
 
+protocol LoginItemServicing {
+    var status: SMAppService.Status { get }
+    func register() throws
+    func unregister() throws
+}
+
+extension SMAppService: LoginItemServicing {}
+
+enum StartAtLoginPromptResponse {
+    case enable
+    case notNow
+}
+
+protocol StartAtLoginPromptPresenting {
+    func askToEnableStartAtLogin() -> StartAtLoginPromptResponse
+    func showLoginItemError(_ error: Error)
+}
+
+struct AppKitStartAtLoginPromptPresenter: StartAtLoginPromptPresenting {
+    func askToEnableStartAtLogin() -> StartAtLoginPromptResponse {
+        let alert = NSAlert()
+        alert.messageText = "Start Photos Wallpaper at login?"
+        alert.informativeText = "To keep this wallpaper schedule running after you restart or sign back in, Photos Wallpaper needs to start automatically."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Start at Login")
+        alert.addButton(withTitle: "Not Now")
+
+        return alert.runModal() == .alertFirstButtonReturn ? .enable : .notNow
+    }
+
+    func showLoginItemError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn’t change 'start at login' setting"
+        alert.informativeText = "Photos Wallpaper could not update whether it starts automatically. You can manage this in System Settings > General > Login Items & Extensions.\n\n\(error.localizedDescription)"
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+}
+
 /// Manages the app's "Start at Login" registration and the menu state that reflects it.
 ///
 /// Responsibilities:
@@ -16,78 +55,66 @@ import ServiceManagement
 /// - login item: an app macOS launches automatically after the user signs in.
 @MainActor
 final class LoginItemManager: ObservableObject {
+    private static let dismissedPromptDefaultsKey = "dismissedStartAtLoginPrompt"
+
     @Published private(set) var isEnabled = false
 
-    init() {
+    private let defaults: KeyValueStoring
+    private let loginItemService: LoginItemServicing
+    private let promptPresenter: StartAtLoginPromptPresenting
+
+    init(defaults: KeyValueStoring = UserDefaults.standard,
+         loginItemService: LoginItemServicing = SMAppService.mainApp,
+         promptPresenter: StartAtLoginPromptPresenting? = nil) {
+        self.defaults = defaults
+        self.loginItemService = loginItemService
+        self.promptPresenter = promptPresenter ?? AppKitStartAtLoginPromptPresenter()
         refreshStatus()
     }
 
     /// Re-reads macOS state so the menu stays accurate if the user changed Login Items in System
     /// Settings while the app was running.
     func refreshStatus() {
-        isEnabled = SMAppService.mainApp.status == .enabled
+        isEnabled = loginItemService.status == .enabled
     }
 
     func setEnabled(_ enabled: Bool) {
         do {
             if enabled {
                 try enable()
+                defaults.set(false, forKey: Self.dismissedPromptDefaultsKey)
             } else {
                 try disable()
             }
         } catch {
-            showLoginItemError(error)
+            promptPresenter.showLoginItemError(error)
         }
         refreshStatus()
     }
 
     /// Offers Start at Login whenever the selected schedule needs the app running after sign-in.
-    func promptToEnableIfUseful(for frequency: CycleFrequency) {
+    func promptToEnableStartAtLogin() {
         refreshStatus()
-        guard shouldSuggestLoginItem(for: frequency), !isEnabled else { return }
+        guard !isEnabled else { return }
+        guard !defaults.bool(forKey: Self.dismissedPromptDefaultsKey) else { return }
 
-        let alert = NSAlert()
-        alert.messageText = "Start Photos Wallpaper at login?"
-        alert.informativeText = "Wallpaper rotation can only continue after a shutdown or restart if the app starts automatically."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Start at Login")
-        alert.addButton(withTitle: "Not Now")
-
-        if alert.runModal() == .alertFirstButtonReturn {
+        switch promptPresenter.askToEnableStartAtLogin() {
+        case .enable:
             setEnabled(true)
+        case .notNow:
+            defaults.set(true, forKey: Self.dismissedPromptDefaultsKey)
         }
     }
 
     private func enable() throws {
-        guard SMAppService.mainApp.status != .enabled else { return }
+        guard loginItemService.status != .enabled else { return }
         // Registering the main app lets macOS launch this same bundle at login. This works best
         // from an installed, signed app rather than a transient Xcode DerivedData build.
-        try SMAppService.mainApp.register()
+        try loginItemService.register()
     }
 
     private func disable() throws {
-        guard SMAppService.mainApp.status == .enabled else { return }
-        try SMAppService.mainApp.unregister()
-    }
-
-    private func shouldSuggestLoginItem(for frequency: CycleFrequency) -> Bool {
-        switch frequency {
-        case .onLogin, .onWakeup:
-            return true
-        case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
-            return false
-        #if DEBUG
-        case .oneSecond:
-            return false
-        #endif
-        }
-    }
-
-    private func showLoginItemError(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = "Couldn’t change 'start at login' setting"
-        alert.informativeText = "Photos Wallpaper could not update whether it starts automatically. You can manage this in System Settings > General > Login Items & Extensions.\n\n\(error.localizedDescription)"
-        alert.alertStyle = .warning
-        alert.runModal()
+        guard loginItemService.status == .enabled else { return }
+        try loginItemService.unregister()
     }
 }

@@ -32,7 +32,7 @@ struct photos_wallpaperApp: App {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
             Picker("Wallpaper Schedule", selection: frequencyBinding) {
                 ForEach(CycleFrequency.allCases) { freq in
-                    Text(freq.displayName).tag(freq)
+                    Text(freq.displayName).tag(Optional(freq))
                 }
             }
             .pickerStyle(.menu)
@@ -78,12 +78,14 @@ struct photos_wallpaperApp: App {
         }
     }
 
-    private var frequencyBinding: Binding<CycleFrequency> {
+    private var frequencyBinding: Binding<CycleFrequency?> {
         Binding(
             get: { cycleController.frequency },
             set: { newFrequency in
                 cycleController.frequency = newFrequency
-                loginItemManager.promptToEnableIfUseful(for: newFrequency)
+                if newFrequency != nil {
+                    loginItemManager.promptToEnableStartAtLogin()
+                }
             }
         )
     }

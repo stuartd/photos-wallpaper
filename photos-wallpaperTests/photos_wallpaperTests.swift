@@ -8,6 +8,7 @@
 import Foundation
 import AppKit
 import Photos
+import ServiceManagement
 import Testing
 @testable import photos_wallpaper
 
@@ -33,12 +34,78 @@ struct PhotosWallpaperTests {
         }
     }
 
+
     #if DEBUG
     @Test func debugBuildIncludesOneSecondStressTestFrequency() {
         #expect(CycleFrequency.oneSecond.displayName == "Every second")
         #expect(CycleFrequency.oneSecond.seconds == 1)
     }
     #endif
+
+    @Test func dismissingStartAtLoginPromptSuppressesFutureAutomaticPrompts() {
+        let defaults = FakeDefaults()
+        let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
+        let promptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
+        let manager = LoginItemManager(defaults: defaults,
+                                       loginItemService: loginItemService,
+                                       promptPresenter: promptPresenter)
+
+        manager.promptToEnableStartAtLogin()
+        manager.promptToEnableStartAtLogin()
+
+        #expect(promptPresenter.askCallCount == 1)
+        #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt"))
+        #expect(loginItemService.registerCallCount == 0)
+    }
+
+    @Test func acceptingStartAtLoginPromptRegistersLoginItem() {
+        let defaults = FakeDefaults()
+        let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
+        let promptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.enable])
+        let manager = LoginItemManager(defaults: defaults,
+                                       loginItemService: loginItemService,
+                                       promptPresenter: promptPresenter)
+
+        manager.promptToEnableStartAtLogin()
+
+        #expect(promptPresenter.askCallCount == 1)
+        #expect(loginItemService.registerCallCount == 1)
+        #expect(manager.isEnabled)
+    }
+
+    @Test func manuallyEnablingStartAtLoginClearsDismissal() {
+        let defaults = FakeDefaults()
+        defaults.set(true, forKey: "dismissedStartAtLoginPrompt")
+        let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
+        let promptPresenter = FakeStartAtLoginPromptPresenter(responses: [])
+        let manager = LoginItemManager(defaults: defaults,
+                                       loginItemService: loginItemService,
+                                       promptPresenter: promptPresenter)
+
+        manager.setEnabled(true)
+
+        #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt") == false)
+        #expect(loginItemService.registerCallCount == 1)
+    }
+
+    @Test func newUserStartsWithNoScheduleAndDoesNotScheduleTimer() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+
+        let controller = WallpaperCycleController(
+            photoManager: FakePhotoManager(),
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        #expect(controller.frequency == nil)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(defaults.storage["cycleFrequency"] == nil)
+    }
 
     @Test func loadsSavedFrequencyAndSchedulesTimer() {
         let defaults = FakeDefaults()
@@ -62,6 +129,7 @@ struct PhotosWallpaperTests {
 
     @Test func changingFrequencyPersistsValueAndReschedulesTimer() {
         let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.hour.rawValue
         let scheduler = FakeTimerScheduler()
         let controller = WallpaperCycleController(
             photoManager: FakePhotoManager(),
@@ -76,7 +144,7 @@ struct PhotosWallpaperTests {
         let originalTimer = scheduler.createdTimers[0]
         controller.frequency = .day
 
-        #expect(defaults.storage["cycleFrequency"] == CycleFrequency.day.rawValue)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
         #expect(originalTimer.invalidateCallCount == 1)
         let expectedIntervals: [TimeInterval] = [60 * 60, 60 * 60 * 24]
         #expect(scheduler.scheduledIntervals == expectedIntervals)
@@ -408,14 +476,57 @@ private final class FakePhotoManager: PhotoManaging {
 }
 
 private final class FakeDefaults: KeyValueStoring {
-    var storage: [String: String] = [:]
+    var storage: [String: Any] = [:]
 
     func string(forKey defaultName: String) -> String? {
-        storage[defaultName]
+        storage[defaultName] as? String
+    }
+
+    func bool(forKey defaultName: String) -> Bool {
+        storage[defaultName] as? Bool ?? false
     }
 
     func set(_ value: Any?, forKey defaultName: String) {
-        storage[defaultName] = value as? String
+        storage[defaultName] = value
+    }
+}
+
+private final class FakeLoginItemService: LoginItemServicing {
+    var status: SMAppService.Status
+    private(set) var registerCallCount = 0
+    private(set) var unregisterCallCount = 0
+
+    init(status: SMAppService.Status) {
+        self.status = status
+    }
+
+    func register() throws {
+        registerCallCount += 1
+        status = .enabled
+    }
+
+    func unregister() throws {
+        unregisterCallCount += 1
+        status = .notRegistered
+    }
+}
+
+private final class FakeStartAtLoginPromptPresenter: StartAtLoginPromptPresenting {
+    private var responses: [StartAtLoginPromptResponse]
+    private(set) var askCallCount = 0
+    private(set) var shownErrors: [Error] = []
+
+    init(responses: [StartAtLoginPromptResponse]) {
+        self.responses = responses
+    }
+
+    func askToEnableStartAtLogin() -> StartAtLoginPromptResponse {
+        askCallCount += 1
+        return responses.isEmpty ? .notNow : responses.removeFirst()
+    }
+
+    func showLoginItemError(_ error: Error) {
+        shownErrors.append(error)
     }
 }
 

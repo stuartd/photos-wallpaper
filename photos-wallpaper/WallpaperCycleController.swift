@@ -6,7 +6,7 @@ import Photos
 import UserNotifications
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
-    var frequency: CycleFrequency { get set }
+    var frequency: CycleFrequency? { get set }
     func triggerNow()
 }
 
@@ -52,6 +52,7 @@ struct AppKitScreenProvider: ScreenProviding {
 
 protocol KeyValueStoring: AnyObject {
     func string(forKey defaultName: String) -> String?
+    func bool(forKey defaultName: String) -> Bool
     func set(_ value: Any?, forKey defaultName: String)
 }
 
@@ -194,10 +195,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
 
-    @Published var frequency: CycleFrequency {
+    @Published var frequency: CycleFrequency? {
         didSet {
             // Persist the newly selected frequency so the next launch resumes the same schedule.
-            defaults.set(frequency.rawValue, forKey: Self.defaultsKey)
+            defaults.set(frequency?.rawValue, forKey: Self.defaultsKey)
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
             rescheduleTimer()
         }
@@ -246,9 +247,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
         } else {
-            self.frequency = .hour
+            self.frequency = nil
         }
-        scheduleCycleTrigger()
     }
 
     /// Runs one wallpaper cycle immediately.
@@ -270,6 +270,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeObservation?.invalidate()
         wakeObservation = nil
 
+        guard let frequency else {
+            debugLog("WallpaperCycleController: no wallpaper schedule selected.")
+            return
+        }
+
         switch frequency {
         case .onLogin:
             debugLog("WallpaperCycleController: scheduling one wallpaper cycle for login.")
@@ -282,15 +287,15 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
-            scheduleTimerTrigger()
+            scheduleTimerTrigger(for: frequency)
         #if DEBUG
         case .oneSecond:
-            scheduleTimerTrigger()
+            scheduleTimerTrigger(for: frequency)
         #endif
         }
     }
 
-    private func scheduleTimerTrigger() {
+    private func scheduleTimerTrigger(for frequency: CycleFrequency) {
         guard let seconds = frequency.seconds else { return }
         debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(seconds)s).")
         timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
