@@ -42,7 +42,7 @@ struct PhotosWallpaperTests {
     }
     #endif
 
-    @Test func dismissingStartAtLoginPromptSuppressesFutureAutomaticPrompts() {
+    @Test func dismissingStartAtLoginPromptSuppressesFutureAutomaticPromptsForSession() {
         let defaults = FakeDefaults()
         let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
         let promptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
@@ -50,11 +50,12 @@ struct PhotosWallpaperTests {
                                        loginItemService: loginItemService,
                                        promptPresenter: promptPresenter)
 
-        manager.promptToEnableStartAtLogin()
-        manager.promptToEnableStartAtLogin()
+        manager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.hour.rawValue)
+        manager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.day.rawValue)
 
         #expect(promptPresenter.askCallCount == 1)
-        #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt"))
+        #expect(defaults.string(forKey: "dismissedStartAtLoginPromptSchedule") == nil)
+        #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt") == false)
         #expect(loginItemService.registerCallCount == 0)
     }
 
@@ -66,15 +67,38 @@ struct PhotosWallpaperTests {
                                        loginItemService: loginItemService,
                                        promptPresenter: promptPresenter)
 
-        manager.promptToEnableStartAtLogin()
+        manager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.hour.rawValue)
 
         #expect(promptPresenter.askCallCount == 1)
         #expect(loginItemService.registerCallCount == 1)
         #expect(manager.isEnabled)
     }
 
+    @Test func newSessionAsksAgainAfterDismissingStartAtLoginPrompt() {
+        let defaults = FakeDefaults()
+        let firstPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.notNow])
+        let secondPromptPresenter = FakeStartAtLoginPromptPresenter(responses: [StartAtLoginPromptResponse.enable])
+        let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
+
+        let firstManager = LoginItemManager(defaults: defaults,
+                                            loginItemService: loginItemService,
+                                            promptPresenter: firstPromptPresenter)
+        firstManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.hour.rawValue)
+
+        let secondManager = LoginItemManager(defaults: defaults,
+                                             loginItemService: loginItemService,
+                                             promptPresenter: secondPromptPresenter)
+        secondManager.promptToEnableStartAtLogin(forSchedule: CycleFrequency.day.rawValue)
+
+        #expect(firstPromptPresenter.askCallCount == 1)
+        #expect(secondPromptPresenter.askCallCount == 1)
+        #expect(loginItemService.registerCallCount == 1)
+        #expect(secondManager.isEnabled)
+    }
+
     @Test func manuallyEnablingStartAtLoginClearsDismissal() {
         let defaults = FakeDefaults()
+        defaults.set(CycleFrequency.hour.rawValue, forKey: "dismissedStartAtLoginPromptSchedule")
         defaults.set(true, forKey: "dismissedStartAtLoginPrompt")
         let loginItemService = FakeLoginItemService(status: SMAppService.Status.notRegistered)
         let promptPresenter = FakeStartAtLoginPromptPresenter(responses: [])
@@ -84,6 +108,7 @@ struct PhotosWallpaperTests {
 
         manager.setEnabled(true)
 
+        #expect(defaults.string(forKey: "dismissedStartAtLoginPromptSchedule") == nil)
         #expect(defaults.bool(forKey: "dismissedStartAtLoginPrompt") == false)
         #expect(loginItemService.registerCallCount == 1)
     }
@@ -390,7 +415,7 @@ struct PhotosWallpaperTests {
         #expect(historyLogger.entries[0].photoName.contains("IMG_6790.HEIC"))
         #expect(historyLogger.entries[0].photoName.contains("created"))
         #expect(historyLogger.entries[0].photoName.contains("id:"))
-        #expect(historyLogger.entries[0].screenName == "Monitor 1")
+        #expect(historyLogger.entries[0].screenName == "Screen 1")
     }
 }
 

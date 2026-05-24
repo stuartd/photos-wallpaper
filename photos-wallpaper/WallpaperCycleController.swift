@@ -361,7 +361,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
             let size = screen.pixelSize
-            let screenName = "Monitor \(index + 1)"
+            let screenName = "Screen \(index + 1)"
             debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
             // The completion closure is marked `@escaping` in the protocol, which means Photos may
             // call it later after this function has already returned.

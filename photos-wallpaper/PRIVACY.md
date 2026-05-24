@@ -24,7 +24,7 @@ That history log may include:
 - photo filename
 - photo creation date
 - Photos asset identifier
-- monitor number
+- screen number (for multiple screens)
 - timestamp when the wallpaper was applied
 
 The runtime diagnostics log is written to:

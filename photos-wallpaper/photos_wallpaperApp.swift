@@ -37,6 +37,9 @@ struct photos_wallpaperApp: App {
             }
             .pickerStyle(.menu)
             .disabled(isAboutPanelOpen)
+            .onAppear {
+                promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
+            }
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isAboutPanelOpen)
@@ -83,9 +86,7 @@ struct photos_wallpaperApp: App {
             get: { cycleController.frequency },
             set: { newFrequency in
                 cycleController.frequency = newFrequency
-                if newFrequency != nil {
-                    loginItemManager.promptToEnableStartAtLogin()
-                }
+                promptToEnableStartAtLoginIfNeeded(for: newFrequency)
             }
         )
     }
@@ -95,5 +96,11 @@ struct photos_wallpaperApp: App {
             get: { loginItemManager.isEnabled },
             set: { loginItemManager.setEnabled($0) }
         )
+    }
+
+    private func promptToEnableStartAtLoginIfNeeded(for frequency: CycleFrequency?) {
+        DispatchQueue.main.async {
+            loginItemManager.promptToEnableStartAtLogin(forSchedule: frequency?.rawValue)
+        }
     }
 }

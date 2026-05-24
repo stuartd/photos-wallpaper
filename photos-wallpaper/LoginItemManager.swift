@@ -30,6 +30,7 @@ struct AppKitStartAtLoginPromptPresenter: StartAtLoginPromptPresenting {
         alert.addButton(withTitle: "Start at Login")
         alert.addButton(withTitle: "Not Now")
 
+        NSApp.activate(ignoringOtherApps: true)
         return alert.runModal() == .alertFirstButtonReturn ? .enable : .notNow
     }
 
@@ -55,13 +56,15 @@ struct AppKitStartAtLoginPromptPresenter: StartAtLoginPromptPresenting {
 /// - login item: an app macOS launches automatically after the user signs in.
 @MainActor
 final class LoginItemManager: ObservableObject {
-    private static let dismissedPromptDefaultsKey = "dismissedStartAtLoginPrompt"
+    private static let legacyDismissedPromptDefaultsKey = "dismissedStartAtLoginPrompt"
+    private static let legacyDismissedPromptScheduleDefaultsKey = "dismissedStartAtLoginPromptSchedule"
 
     @Published private(set) var isEnabled = false
 
     private let defaults: KeyValueStoring
     private let loginItemService: LoginItemServicing
     private let promptPresenter: StartAtLoginPromptPresenting
+    private var dismissedPromptThisSession = false
 
     init(defaults: KeyValueStoring = UserDefaults.standard,
          loginItemService: LoginItemServicing = SMAppService.mainApp,
@@ -82,7 +85,7 @@ final class LoginItemManager: ObservableObject {
         do {
             if enabled {
                 try enable()
-                defaults.set(false, forKey: Self.dismissedPromptDefaultsKey)
+                clearPromptDismissal()
             } else {
                 try disable()
             }
@@ -93,17 +96,30 @@ final class LoginItemManager: ObservableObject {
     }
 
     /// Offers Start at Login whenever the selected schedule needs the app running after sign-in.
-    func promptToEnableStartAtLogin() {
+    func promptToEnableStartAtLogin(forSchedule scheduleIdentifier: String?) {
+        clearLegacyPromptDismissal()
+        guard scheduleIdentifier != nil else { return }
+
         refreshStatus()
         guard !isEnabled else { return }
-        guard !defaults.bool(forKey: Self.dismissedPromptDefaultsKey) else { return }
+        guard !dismissedPromptThisSession else { return }
 
         switch promptPresenter.askToEnableStartAtLogin() {
         case .enable:
             setEnabled(true)
         case .notNow:
-            defaults.set(true, forKey: Self.dismissedPromptDefaultsKey)
+            dismissedPromptThisSession = true
         }
+    }
+
+    private func clearPromptDismissal() {
+        dismissedPromptThisSession = false
+        clearLegacyPromptDismissal()
+    }
+
+    private func clearLegacyPromptDismissal() {
+        defaults.set(nil, forKey: Self.legacyDismissedPromptScheduleDefaultsKey)
+        defaults.set(false, forKey: Self.legacyDismissedPromptDefaultsKey)
     }
 
     private func enable() throws {

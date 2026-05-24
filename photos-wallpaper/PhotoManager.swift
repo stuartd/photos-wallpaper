@@ -137,8 +137,9 @@ final class PhotoManager: PhotoManaging {
         }
 
         do {
-            try FileManager.default.createDirectory(at: wallpaperURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try prepareWallpaperCache(at: wallpaperURL.deletingLastPathComponent())
             try jpegData.write(to: wallpaperURL, options: .atomic)
+            try markAsHiddenGeneratedWallpaperResource(wallpaperURL)
             debugLog("PhotoManager: wrote wallpaper file to \(wallpaperURL.path).")
             try wallpaperManager.setWallpaper(for: screen, to: wallpaperURL, options: WallpaperOptions())
             wallpaperCacheLock.lock()
@@ -146,6 +147,7 @@ final class PhotoManager: PhotoManaging {
             activeWallpaperFilenamesByScreen[screenIdentifier] = wallpaperURL.lastPathComponent
             if activeWallpaperFilenamesByScreen.count >= NSScreen.screens.count {
                 removeStaleWallpaperCacheFiles()
+                removeLegacyWallpaperCacheFiles()
             }
             debugLog("PhotoManager: wallpaper applied successfully to \(screenDescription).")
             return true
@@ -180,6 +182,20 @@ final class PhotoManager: PhotoManaging {
             ?? FileManager.default.homeDirectoryForCurrentUser
         return applicationSupport
             .appendingPathComponent("photos-wallpaper", isDirectory: true)
+            .appendingPathComponent(".WallpaperCache", isDirectory: true)
+    }
+
+    private func prepareWallpaperCache(at directoryURL: URL) throws {
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try markAsHiddenGeneratedWallpaperResource(directoryURL)
+    }
+
+    private func markAsHiddenGeneratedWallpaperResource(_ url: URL) throws {
+        var values = URLResourceValues()
+        values.isHidden = true
+        values.isExcludedFromBackup = true
+        var mutableURL = url
+        try mutableURL.setResourceValues(values)
     }
 
     private func removeStaleWallpaperCacheFiles() {
@@ -191,6 +207,19 @@ final class PhotoManager: PhotoManaging {
 
         let activeWallpaperFilenames = Set(activeWallpaperFilenamesByScreen.values)
         for url in contents where isGeneratedWallpaperCacheFile(url) && !activeWallpaperFilenames.contains(url.lastPathComponent) {
+            removeWallpaperCacheFile(url)
+        }
+    }
+
+    private func removeLegacyWallpaperCacheFiles() {
+        let legacyCacheDirectory = wallpaperCacheDirectoryURL().deletingLastPathComponent()
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: legacyCacheDirectory,
+                                                                          includingPropertiesForKeys: nil,
+                                                                          options: [.skipsHiddenFiles]) else {
+            return
+        }
+
+        for url in contents where isGeneratedWallpaperCacheFile(url) {
             removeWallpaperCacheFile(url)
         }
     }
