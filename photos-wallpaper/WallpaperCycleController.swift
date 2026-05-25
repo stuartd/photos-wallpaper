@@ -20,24 +20,47 @@ protocol WallpaperCycleNotifying {
 ///
 /// Notifications are requested lazily here instead of up-front at launch so the app only asks for
 /// permission if it actually needs to explain a missing-library situation.
-final class UserNotificationWallpaperCycleNotifier: WallpaperCycleNotifying {
+final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNotifying, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
+
+    override init() {
+        super.init()
+        center.delegate = self
+    }
 
     func notifyNoPhotosAvailable() {
         Task {
-            let granted = try? await center.requestAuthorization(options: [.alert, .sound])
-            guard granted == true else { return }
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                guard granted else {
+                    debugLog("UserNotificationWallpaperCycleNotifier: notification authorization was not granted.")
+                    return
+                }
 
-            let content = UNMutableNotificationContent()
-            content.title = "No Photos Available"
-            content.body = "Add photos to your library so the app can rotate wallpapers."
-            content.sound = .default
+                let settings = await center.notificationSettings()
+                debugLog("UserNotificationWallpaperCycleNotifier: notification authorization status is \(settings.authorizationStatus.rawValue), alert setting is \(settings.alertSetting.rawValue).")
 
-            let request = UNNotificationRequest(identifier: "no-photos-available",
-                                                content: content,
-                                                trigger: nil)
-            try? await center.add(request)
+                let content = UNMutableNotificationContent()
+                content.title = "No Photos Available"
+                content.body = "This app can't set your wallpaper as there are no photos in your library"
+                content.sound = .default
+
+                let request = UNNotificationRequest(identifier: "no-photos-available",
+                                                    content: content,
+                                                    trigger: nil)
+                try await center.add(request)
+                debugLog("UserNotificationWallpaperCycleNotifier: queued no-photos notification.")
+            } catch {
+                debugLog("UserNotificationWallpaperCycleNotifier: failed to queue no-photos notification: \(error).")
+            }
         }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        debugLog("UserNotificationWallpaperCycleNotifier: presenting foreground notification \(notification.request.identifier).")
+        completionHandler([.banner, .list, .sound])
     }
 }
 
