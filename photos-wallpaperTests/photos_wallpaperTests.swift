@@ -393,7 +393,38 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
-    @Test func triggerNowOnlyNotifiesOnceWhileLibraryRemainsEmpty() async {
+    @Test func triggerNowNotifiesEveryTimePhotoLibraryPermissionIsDenied() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let notifier = FakeWallpaperCycleNotifier()
+        let photoManager = FakePhotoManager(photoSelectionOverride: .permissionDenied)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 2)
+        #expect(notifier.noPhotosNotificationCount == 0)
+        #expect(photoManager.requestedAssets.isEmpty)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func triggerNowNotifiesEveryTimeLibraryRemainsEmpty() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
         let notifier = FakeWallpaperCycleNotifier()
@@ -418,8 +449,71 @@ struct PhotosWallpaperTests {
         controller.triggerNow()
         await Task.yield()
 
+        #expect(notifier.noPhotosNotificationCount == 2)
+    }
+
+    @Test func scheduledCycleOnlyNotifiesOnceWhileLibraryRemainsEmpty() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let notifier = FakeWallpaperCycleNotifier()
+        let photoManager = FakePhotoManager(assetsToReturn: [])
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
         #expect(notifier.noPhotosNotificationCount == 1)
     }
+
+    @Test func scheduledCycleNotifiesAgainWhenUnavailableReasonChanges() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let notifier = FakeWallpaperCycleNotifier()
+        let photoManager = FakePhotoManager(assetsToReturn: [])
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        photoManager.photoSelectionOverride = .permissionDenied
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(notifier.noPhotosNotificationCount == 1)
+        #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
+    }
+
     @Test func triggerNowWritesHistoryEntryAfterSuccessfulWallpaperUpdate() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -456,6 +550,7 @@ private final class FakePhotoManager: PhotoManaging {
     private let assetsToReturn: [PHAsset]
     private let assetNames: [ObjectIdentifier: String]
     private let completesImageRequestsImmediately: Bool
+    var photoSelectionOverride: PhotoSelectionResult?
     private var pendingImageCompletions: [(NSImage?) -> Void] = []
     private(set) var getRandomPhotosCallCount = 0
     private(set) var requestedPhotoCount = 0
@@ -466,10 +561,12 @@ private final class FakePhotoManager: PhotoManaging {
 
     init(assetsToReturn: [PHAsset]? = nil,
          assetNames: [String]? = nil,
-         completesImageRequestsImmediately: Bool = true) {
+         completesImageRequestsImmediately: Bool = true,
+         photoSelectionOverride: PhotoSelectionResult? = nil) {
         let assets = assetsToReturn ?? (0..<8).map { _ in makeFakeAsset() }
         self.assetsToReturn = assets
         self.completesImageRequestsImmediately = completesImageRequestsImmediately
+        self.photoSelectionOverride = photoSelectionOverride
         if let assetNames {
             self.assetNames = Dictionary(uniqueKeysWithValues: zip(assets.map(ObjectIdentifier.init), assetNames))
         } else {
@@ -480,6 +577,7 @@ private final class FakePhotoManager: PhotoManaging {
     func getRandomPhotos(count: Int) -> PhotoSelectionResult {
         getRandomPhotosCallCount += 1
         requestedPhotoCount = count
+        if let photoSelectionOverride { return photoSelectionOverride }
         guard !assetsToReturn.isEmpty else { return .unavailable }
         if assetsToReturn.count >= count {
             return .photos(Array(assetsToReturn.prefix(count)))
@@ -593,7 +691,16 @@ private final class FakeStartAtLoginPromptPresenter: StartAtLoginPromptPresentin
 }
 
 private final class FakeTimer: CancellableTimer {
+    private let block: () -> Void
     private(set) var invalidateCallCount = 0
+
+    init(block: @escaping () -> Void = {}) {
+        self.block = block
+    }
+
+    func fire() {
+        block()
+    }
 
     func invalidate() {
         invalidateCallCount += 1
@@ -606,7 +713,7 @@ private final class FakeTimerScheduler: TimerScheduling {
 
     func scheduledTimer(interval: TimeInterval, repeats: Bool, block: @escaping () -> Void) -> CancellableTimer {
         scheduledIntervals.append(interval)
-        let timer = FakeTimer()
+        let timer = FakeTimer(block: block)
         createdTimers.append(timer)
         return timer
     }
@@ -636,9 +743,14 @@ private final class FakeWakeEventObserver: WakeEventObserving {
 
 private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
     private(set) var noPhotosNotificationCount = 0
+    private(set) var photoLibraryPermissionDeniedNotificationCount = 0
 
     func notifyNoPhotosAvailable() {
         noPhotosNotificationCount += 1
+    }
+
+    func notifyPhotoLibraryPermissionDenied() {
+        photoLibraryPermissionDeniedNotificationCount += 1
     }
 }
 

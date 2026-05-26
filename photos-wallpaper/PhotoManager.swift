@@ -5,6 +5,7 @@ import AppKit
 enum PhotoSelectionResult {
     case photos([PHAsset])
     case waitingForAuthorization
+    case permissionDenied
     case unavailable
 }
 
@@ -45,8 +46,12 @@ final class PhotoManager: PhotoManaging {
         switch refreshPhotos() {
         case .ready:
             break
+            
+        // clunky but explicit
         case .waitingForAuthorization:
             return .waitingForAuthorization
+        case .permissionDenied:
+            return .permissionDenied
         case .unavailable:
             return .unavailable
         }
@@ -160,6 +165,7 @@ final class PhotoManager: PhotoManaging {
     private enum PhotoRefreshResult {
         case ready
         case waitingForAuthorization
+        case permissionDenied
         case unavailable
     }
 
@@ -259,7 +265,7 @@ final class PhotoManager: PhotoManaging {
         case .denied, .restricted:
             allPhotos = nil
             debugLog("PhotoManager: cannot fetch photos. Photos authorization: \(Self.photoAuthorizationDescription).")
-            return .unavailable
+            return .permissionDenied
         @unknown default:
             allPhotos = nil
             debugLog("PhotoManager: cannot fetch photos. Photos authorization: unknown.")

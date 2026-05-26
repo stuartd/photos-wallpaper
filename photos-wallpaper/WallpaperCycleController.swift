@@ -14,6 +14,7 @@ protocol WallpaperCycleControlling: AnyObject, ObservableObject {
 /// `UNUserNotificationCenter`.
 protocol WallpaperCycleNotifying {
     func notifyNoPhotosAvailable()
+    func notifyPhotoLibraryPermissionDenied()
 }
 
 /// Production notifier used when the photo library is empty.
@@ -29,6 +30,18 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     }
 
     func notifyNoPhotosAvailable() {
+        queueNotification(identifier: "no-photos-available-\(UUID().uuidString)",
+                          title: "No Photos Available",
+                          body: "Photos Wallpaper can't set your wallpaper as there are no photos in your library")
+    }
+
+    func notifyPhotoLibraryPermissionDenied() {
+        queueNotification(identifier: "photo-library-permission-denied-\(UUID().uuidString)",
+                          title: "Photos Access Needed",
+                          body: "Photos Wallpaper can't set your wallpaper because it does not have permission to read your photo library. Enable access in System Settings > Privacy & Security > Photos.")
+    }
+
+    private func queueNotification(identifier: String, title: String, body: String) {
         Task {
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound])
@@ -41,17 +54,17 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
                 debugLog("UserNotificationWallpaperCycleNotifier: notification authorization status is \(settings.authorizationStatus.rawValue), alert setting is \(settings.alertSetting.rawValue).")
 
                 let content = UNMutableNotificationContent()
-                content.title = "No Photos Available"
-                content.body = "This app can't set your wallpaper as there are no photos in your library"
+                content.title = title
+                content.body = body
                 content.sound = .default
 
-                let request = UNNotificationRequest(identifier: "no-photos-available",
+                let request = UNNotificationRequest(identifier: identifier,
                                                     content: content,
                                                     trigger: nil)
                 try await center.add(request)
-                debugLog("UserNotificationWallpaperCycleNotifier: queued no-photos notification.")
+                debugLog("UserNotificationWallpaperCycleNotifier: queued notification \(identifier).")
             } catch {
-                debugLog("UserNotificationWallpaperCycleNotifier: failed to queue no-photos notification: \(error).")
+                debugLog("UserNotificationWallpaperCycleNotifier: failed to queue notification \(identifier): \(error).")
             }
         }
     }
@@ -237,7 +250,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var timer: CancellableTimer?
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
-    private var hasNotifiedMissingPhotos = false
+    private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
 
@@ -283,7 +296,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         debugLog("WallpaperCycleController: manual wallpaper refresh requested.")
         // `Task {}` starts an async unit of work while keeping the refresh on the main actor.
         Task { @MainActor in
-            self.tick()
+            self.tick(trigger: .manual)
         }
     }
 
@@ -302,12 +315,12 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         switch frequency {
         case .onLogin:
             debugLog("WallpaperCycleController: scheduling one wallpaper cycle for login.")
-            tick()
+            tick(trigger: .login)
         case .onWakeup:
             debugLog("WallpaperCycleController: observing system wake notifications.")
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
-                    self?.tick()
+                    self?.tick(trigger: .wake)
                 }
             }
         case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
@@ -326,7 +339,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             // `[weak self]` avoids the timer retaining the controller forever. Without that, the
             // controller and timer can keep each other alive even if the app wanted to release one.
             Task { @MainActor [weak self] in
-                self?.tick()
+                self?.tick(trigger: .scheduled)
             }
         }
     }
@@ -335,11 +348,22 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         scheduleCycleTrigger()
     }
 
+    private enum WallpaperCycleTrigger {
+        case manual
+        case login
+        case wake
+        case scheduled
+
+        var shouldAlwaysNotifyUnavailablePhotos: Bool {
+            self == .manual
+        }
+    }
+
     /// Executes one full wallpaper refresh across every connected display.
     ///
     /// The method stays on the main actor because it touches AppKit screen objects and because the
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
-    private func tick() {
+    private func tick(trigger: WallpaperCycleTrigger) {
         guard !isCycleInProgress else {
             debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
             return
@@ -361,22 +385,20 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
             finishCycle()
             return
+        case .permissionDenied:
+            notifyUnavailablePhotos(reason: .permissionDenied, trigger: trigger)
+            finishCycle()
+            return
         case .unavailable:
             assets = []
         }
         debugLog("WallpaperCycleController: selected \(assets.count) photo asset(s) for \(screens.count) screen(s).")
         guard !assets.isEmpty else {
-            if !hasNotifiedMissingPhotos {
-                debugLog("WallpaperCycleController: no photo assets available, posting notification.")
-                notifier.notifyNoPhotosAvailable()
-                hasNotifiedMissingPhotos = true
-            } else {
-                debugLog("WallpaperCycleController: no photo assets available, notification already shown.")
-            }
+            notifyUnavailablePhotos(reason: .emptyLibrary, trigger: trigger)
             finishCycle()
             return
         }
-        hasNotifiedMissingPhotos = false
+        lastAutomaticUnavailablePhotosReason = nil
 
         // `zip` pairs screens with assets 1:1. The request itself is async, so each screen continues
         // independently after this loop starts the image fetches.
@@ -410,6 +432,30 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                     debugLog("WallpaperCycleController: image request \(index + 1) returned nil.")
                 }
             }
+        }
+    }
+
+    private enum UnavailablePhotosReason {
+        case emptyLibrary
+        case permissionDenied
+    }
+
+    private func notifyUnavailablePhotos(reason: UnavailablePhotosReason, trigger: WallpaperCycleTrigger) {
+        if !trigger.shouldAlwaysNotifyUnavailablePhotos {
+            guard lastAutomaticUnavailablePhotosReason != reason else {
+                debugLog("WallpaperCycleController: photo library unavailable for \(reason), automatic notification already shown.")
+                return
+            }
+            lastAutomaticUnavailablePhotosReason = reason
+        }
+
+        switch reason {
+        case .emptyLibrary:
+            debugLog("WallpaperCycleController: no photo assets available, posting notification.")
+            notifier.notifyNoPhotosAvailable()
+        case .permissionDenied:
+            debugLog("WallpaperCycleController: Photos permission denied, posting notification.")
+            notifier.notifyPhotoLibraryPermissionDenied()
         }
     }
 
