@@ -1,61 +1,89 @@
-# Privacy
+# Photos Wallpaper Privacy
 
-`photos-wallpaper` is a local macOS utility.
+Photos Wallpaper is a local macOS menu bar app. It uses your Photos library only to choose images for your desktop wallpaper, and all of that work happens on your Mac.
 
-## What The App Accesses
+## The Short Version
 
-The app requests access to your Photos library so it can choose random images to use them as desktop wallpaper. It reads images only and does not modify your Photos library.
+- Your photos are not uploaded.
+- Your wallpaper history is not uploaded.
+- There are no accounts, analytics, advertising services, or server-side databases.
+- The app reads from your Photos library, asks macOS to set wallpaper, and writes a small amount of local app data.
 
-## What The App Stores
+## Photos Access
 
-The app stores:
+Photos Wallpaper asks macOS for permission to read your Photos library. That access is needed so the app can pick photo assets and render image data for wallpaper-sized previews.
 
-- your selected wallpaper cycle frequency
-- whether the app should start at login, if you enable that option in macOS
-- a local wallpaper history log
-- a local runtime diagnostics log
+The app does not modify, delete, move, tag, favorite, or otherwise change anything in your Photos library.
 
-The wallpaper history log is written to:
+## Local Settings
 
-- `~/Library/Application Support/photos-wallpaper/wallpaper-history.log`
+The app stores a few settings locally on your Mac:
 
-That history log may include:
+- the wallpaper refresh frequency you selected
+- whether the app should start at login, if you enable that option
+- local wallpaper history
+- local runtime diagnostics
 
-- photo filename
-- photo creation date
-- Photos asset identifier
-- screen number (for multiple screens)
-- timestamp when the wallpaper was applied
+## Wallpaper History
 
-The runtime diagnostics log is written to:
+When a wallpaper is applied, Photos Wallpaper can write a plain-text history entry so you can later identify which photo appeared on which display.
 
-- `~/Library/Application Support/photos-wallpaper/runtime.log`
+The history file is stored here:
 
-That diagnostics log may include:
+`~/Library/Application Support/photos-wallpaper/wallpaper-history.log`
+
+History entries may include:
+
+- the photo filename, when Photos provides one
+- the photo creation date, when available
+- the Photos asset identifier
+- the display name or screen number
+- the time the wallpaper was applied
+
+The history log is kept locally. It is not sent anywhere by the app.
+
+## Runtime Diagnostics
+
+Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible.
+
+The diagnostics file is stored here:
+
+`~/Library/Application Support/photos-wallpaper/runtime.log`
+
+Diagnostics entries may include:
 
 - wallpaper cycle timing and schedule changes
-- Photos library asset counts and selected Photos asset identifiers
-- temporary wallpaper file paths
+- Photos permission state and library asset counts
+- selected Photos asset identifiers
+- generated wallpaper file paths
 - success or failure messages from wallpaper updates
 - app errors useful for troubleshooting
 
-## What The App Does Not Do
+The diagnostics log is kept locally. It is not sent anywhere by the app.
 
-The app does not:
+## Temporary Wallpaper Files
+
+macOS wallpaper APIs work with files, so Photos Wallpaper writes generated wallpaper images into a local app cache before asking macOS to use them as desktop wallpaper. The app marks those generated files as hidden and removes stale generated wallpaper files as it continues running.
+
+## What Never Leaves Your Mac
+
+Photos Wallpaper does not:
 
 - upload your photos
 - upload your wallpaper history
-- upload your runtime diagnostics log
-- create an online account
+- upload your diagnostics log
+- create or require an online account
 - send your data to a server
-- use analytics or advertising services
+- use analytics services
+- use advertising services
 
 ## Data Flow
 
-All processing happens locally on your Mac.
+The data flow is intentionally simple:
 
-The app reads image data from your Photos library, asks macOS to set desktop wallpaper, and writes the local history and diagnostics logs described above.
+1. Photos Wallpaper reads image data from your Photos library after you grant permission.
+2. It creates a local wallpaper image file for the relevant display.
+3. It asks macOS to apply that file as desktop wallpaper.
+4. It writes local history and diagnostics entries as described above.
 
-## Permissions
-
-The app asks for Photos permission because macOS requires that access before an app can read images from your Photos library.
+That is the whole loop.

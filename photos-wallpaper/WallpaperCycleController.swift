@@ -32,7 +32,7 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     func notifyNoPhotosAvailable() {
         queueNotification(identifier: "no-photos-available-\(UUID().uuidString)",
                           title: "No Photos Available",
-                          body: "Photos Wallpaper can't set your wallpaper as there are no photos in your library")
+                          body: "Photos Wallpaper can't set your wallpaper because no photos are available.")
     }
 
     func notifyPhotoLibraryPermissionDenied() {
@@ -325,6 +325,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
         case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
             scheduleTimerTrigger(for: frequency)
+            
         #if DEBUG
         case .oneSecond:
             scheduleTimerTrigger(for: frequency)
@@ -380,6 +381,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         let assets: [PHAsset]
         switch photoManager.getRandomPhotos(count: screens.count) {
         case .photos(let selectedAssets):
+            if selectedAssets.isEmpty {
+                notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: trigger)
+                finishCycle()
+                return
+            }
             assets = selectedAssets
         case .waitingForAuthorization:
             debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
@@ -390,14 +396,12 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             finishCycle()
             return
         case .unavailable:
-            assets = []
-        }
-        debugLog("WallpaperCycleController: selected \(assets.count) photo asset(s) for \(screens.count) screen(s).")
-        guard !assets.isEmpty else {
-            notifyUnavailablePhotos(reason: .emptyLibrary, trigger: trigger)
+            notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: trigger)
             finishCycle()
             return
         }
+
+        debugLog("WallpaperCycleController: selected \(assets.count) photo asset(s) for \(screens.count) screen(s).")
         lastAutomaticUnavailablePhotosReason = nil
 
         // `zip` pairs screens with assets 1:1. The request itself is async, so each screen continues
@@ -436,7 +440,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     }
 
     private enum UnavailablePhotosReason {
-        case emptyLibrary
+        case noPhotosAvailable
         case permissionDenied
     }
 
@@ -450,7 +454,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
 
         switch reason {
-        case .emptyLibrary:
+        case .noPhotosAvailable:
             debugLog("WallpaperCycleController: no photo assets available, posting notification.")
             notifier.notifyNoPhotosAvailable()
         case .permissionDenied:

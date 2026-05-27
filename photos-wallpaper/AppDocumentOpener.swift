@@ -152,54 +152,48 @@ final class AppDocumentOpener: AppDocumentOpening {
 
     private func makePrivacyAttributedString(from markdownText: String) -> NSAttributedString {
         let output = NSMutableAttributedString()
-        let bodyFont = NSFont.preferredFont(forTextStyle: .body)
-        let bodyColor = NSColor.labelColor
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.paragraphSpacing = 8
-        paragraphStyle.lineSpacing = 2
 
         for rawLine in markdownText.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else {
+
+            if line.isEmpty {
                 output.append(NSAttributedString(string: "\n"))
-                continue
-            }
-
-            let text: String
-            let font: NSFont
-            let paragraphSpacing: CGFloat
-
-            if line.hasPrefix("# ") {
-                text = String(line.dropFirst(2))
-                font = NSFont.boldSystemFont(ofSize: 26)
-                paragraphSpacing = 14
+            } else if line.hasPrefix("# ") {
+                output.append(markdownLine(String(line.dropFirst(2)), font: .boldSystemFont(ofSize: 26), paragraphSpacing: 14))
             } else if line.hasPrefix("## ") {
-                text = String(line.dropFirst(3))
-                font = NSFont.boldSystemFont(ofSize: 18)
-                paragraphSpacing = 10
+                output.append(markdownLine(String(line.dropFirst(3)), font: .boldSystemFont(ofSize: 18), paragraphSpacing: 10))
             } else if line.hasPrefix("- ") {
-                text = "• " + line.dropFirst(2)
-                font = bodyFont
-                paragraphSpacing = 4
+                output.append(markdownLine("• " + line.dropFirst(2), font: .preferredFont(forTextStyle: .body), paragraphSpacing: 4))
+            } else if line.range(of: #"^\d+\. "#, options: .regularExpression) != nil {
+                output.append(markdownLine(line, font: .preferredFont(forTextStyle: .body), paragraphSpacing: 4))
             } else {
-                text = line
-                font = bodyFont
-                paragraphSpacing = 8
+                output.append(markdownLine(line, font: .preferredFont(forTextStyle: .body), paragraphSpacing: 8))
             }
-
-            let style = paragraphStyle.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-            style.paragraphSpacing = paragraphSpacing
-
-            output.append(NSAttributedString(
-                string: text.replacingOccurrences(of: "`", with: "") + "\n",
-                attributes: [
-                    .font: font,
-                    .foregroundColor: bodyColor,
-                    .paragraphStyle: style
-                ]
-            ))
         }
 
         return output
+    }
+
+    private func markdownLine(_ line: String, font: NSFont, paragraphSpacing: CGFloat) -> NSAttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace,
+            failurePolicy: .returnPartiallyParsedIfPossible
+        )
+        let parsed = (try? NSMutableAttributedString(
+            markdown: Data(line.utf8),
+            options: options
+        )) ?? NSMutableAttributedString(string: line)
+        let fullRange = NSRange(location: 0, length: parsed.length)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.paragraphSpacing = paragraphSpacing
+        paragraphStyle.lineSpacing = 2
+
+        parsed.addAttributes([
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ], range: fullRange)
+        parsed.append(NSAttributedString(string: "\n"))
+        return parsed
     }
 }
