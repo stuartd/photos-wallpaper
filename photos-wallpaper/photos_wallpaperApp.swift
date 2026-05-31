@@ -18,8 +18,8 @@ import AppKit
 /// Quick SwiftUI glossary:
 /// - `App`: the SwiftUI entry point, roughly comparable to the app delegate/bootstrap layer.
 /// - `@StateObject`: "SwiftUI owns this reference-type object and should keep it alive for me."
-/// - `$cycleController.frequency`: a two-way binding, so UI changes update the model and model
-///   changes update the UI.
+/// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
+///   the UI.
 struct photos_wallpaperApp: App {
     @StateObject private var cycleController = WallpaperCycleController()
     @StateObject private var loginItemManager = LoginItemManager()

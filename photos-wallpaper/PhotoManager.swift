@@ -251,6 +251,7 @@ final class PhotoManager: PhotoManaging {
     /// `.readWrite`. This app only fetches and renders images; it never writes to the Photos library.
     private func refreshPhotos() -> PhotoRefreshResult {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        
         switch status {
         case .authorized, .limited:
             allPhotos = Self.fetchAllPhotos()

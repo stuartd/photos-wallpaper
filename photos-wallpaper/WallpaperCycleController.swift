@@ -17,7 +17,7 @@ protocol WallpaperCycleNotifying {
     func notifyPhotoLibraryPermissionDenied()
 }
 
-/// Production notifier used when the photo library is empty.
+/// Production notifier used when the app needs to explain why wallpaper selection failed.
 ///
 /// Notifications are requested lazily here instead of up-front at launch so the app only asks for
 /// permission if it actually needs to explain a missing-library situation.
@@ -218,7 +218,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 /// - remember the user's chosen schedule
 /// - install the right timer, login, or wake trigger
 /// - map screens to photo assets
-/// - trigger notification/UI side effects when the library is empty
+/// - trigger notification/UI side effects when photos are unavailable
 ///
 /// It deliberately does not know how Photos or wallpaper writing work internally; those details
 /// live behind protocols so the controller can be unit tested.

@@ -24,7 +24,7 @@ final class AppDocumentOpener: AppDocumentOpening {
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .center
         
-        // TODO - properly, not just blank lines
+        // TODO: Replace spacer-only credits layout with explicit AppKit spacing.
 
         let creditsLabel = NSTextField(wrappingLabelWithString: """
         © Stuart Dunkeld 2026
