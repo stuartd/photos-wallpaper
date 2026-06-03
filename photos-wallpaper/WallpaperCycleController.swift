@@ -335,7 +335,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private func scheduleTimerTrigger(for frequency: CycleFrequency) {
         guard let seconds = frequency.seconds else { return }
-        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName) (\(seconds)s).")
+        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName.lowercased()) (\(Int(seconds)) seconds).")
         timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
             // `[weak self]` avoids the timer retaining the controller forever. Without that, the
             // controller and timer can keep each other alive even if the app wanted to release one.
