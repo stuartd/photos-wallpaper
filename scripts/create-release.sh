@@ -8,7 +8,7 @@ PROJECT="$REPO_ROOT/photos-wallpaper.xcodeproj"
 SCHEME="photos-wallpaper"
 CONFIGURATION="Release"
 APP_NAME="photos-wallpaper.app"
-DMG_NAME="photos-wallpaper-alpha-release.dmg"
+DMG_NAME="photos-wallpaper.dmg"
 VOLUME_NAME="Photos Wallpaper"
 
 OUTPUT_DIR="${1:-$REPO_ROOT/releases}"
