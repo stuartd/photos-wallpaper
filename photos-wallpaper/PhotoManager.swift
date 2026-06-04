@@ -9,10 +9,34 @@ enum PhotoSelectionResult {
     case unavailable
 }
 
+enum PhotoAssetLookupResult {
+    case photo(PHAsset)
+    case waitingForAuthorization
+    case permissionDenied
+    case notFound
+    case unavailable
+}
+
+enum PhotosWallpaperAlbumError: LocalizedError {
+    case albumUnavailable
+    case assetCouldNotBeAdded
+
+    var errorDescription: String? {
+        switch self {
+        case .albumUnavailable:
+            return "Photos Wallpaper could not create or find the Photos Wallpaper album."
+        case .assetCouldNotBeAdded:
+            return "Photos Wallpaper could not add that photo to the Photos Wallpaper album."
+        }
+    }
+}
+
 protocol PhotoManaging: AnyObject {
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
     func displayName(for asset: PHAsset) -> String
+    func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
 }
 
@@ -27,6 +51,7 @@ protocol PhotoManaging: AnyObject {
 /// - `NSScreen`: AppKit's representation of one connected display.
 final class PhotoManager: PhotoManaging {
     static let shared = PhotoManager()
+    private static let photosWallpaperAlbumTitle = "Photos Wallpaper"
 
     private let wallpaperManager: WallpaperManaging
     private let wallpaperCacheLock = NSLock()
@@ -103,6 +128,28 @@ final class PhotoManager: PhotoManaging {
         return asset.localIdentifier
     }
 
+    func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult {
+        let trimmedIdentifier = localIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdentifier.isEmpty else { return .notFound }
+
+        switch refreshPhotos() {
+        case .ready:
+            let result = PHAsset.fetchAssets(withLocalIdentifiers: [trimmedIdentifier], options: nil)
+            guard let asset = result.firstObject else {
+                debugLog("PhotoManager: no Photos asset found for history identifier \(trimmedIdentifier).")
+                return .notFound
+            }
+            debugLog("PhotoManager: found Photos asset for history identifier \(trimmedIdentifier).")
+            return .photo(asset)
+        case .waitingForAuthorization:
+            return .waitingForAuthorization
+        case .permissionDenied:
+            return .permissionDenied
+        case .unavailable:
+            return .unavailable
+        }
+    }
+
     /// Asks Photos to render the chosen asset at approximately the screen size we plan to use.
     ///
     /// The Photos API is callback-based, so this remains asynchronous even though the rest of the
@@ -120,6 +167,45 @@ final class PhotoManager: PhotoManaging {
         PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
             debugLog("PhotoManager: image request for asset \(asset.localIdentifier) completed with image: \(image != nil).")
             completion(image)
+        }
+    }
+
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+        switch refreshPhotos() {
+        case .ready:
+            break
+        case .waitingForAuthorization:
+            completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
+            return
+        case .permissionDenied:
+            completion(.failure(PhotosWallpaperAlbumError.assetCouldNotBeAdded))
+            return
+        case .unavailable:
+            completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
+            return
+        }
+
+        if let album = Self.fetchPhotosWallpaperAlbum() {
+            add(asset: asset, to: album, completion: completion)
+            return
+        }
+
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: Self.photosWallpaperAlbumTitle)
+        } completionHandler: { [weak self] success, error in
+            if let error {
+                debugLog("PhotoManager: failed to create Photos Wallpaper album: \(error).")
+                completion(.failure(error))
+                return
+            }
+
+            guard success, let album = Self.fetchPhotosWallpaperAlbum() else {
+                debugLog("PhotoManager: Photos Wallpaper album was not available after creation.")
+                completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
+                return
+            }
+
+            self?.add(asset: asset, to: album, completion: completion)
         }
     }
 
@@ -287,6 +373,34 @@ final class PhotoManager: PhotoManaging {
     private static func fetchAllPhotos() -> PHFetchResult<PHAsset> {
         let fetchOptions = PHFetchOptions()
         return PHAsset.fetchAssets(with: .image, options: fetchOptions)
+    }
+
+    private static func fetchPhotosWallpaperAlbum() -> PHAssetCollection? {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "title = %@", photosWallpaperAlbumTitle)
+        return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options).firstObject
+    }
+
+    private func add(asset: PHAsset, to album: PHAssetCollection, completion: @escaping (Result<Void, Error>) -> Void) {
+        PHPhotoLibrary.shared().performChanges {
+            guard let changeRequest = PHAssetCollectionChangeRequest(for: album) else { return }
+            changeRequest.addAssets([asset] as NSArray)
+        } completionHandler: { success, error in
+            if let error {
+                debugLog("PhotoManager: failed to add asset \(asset.localIdentifier) to Photos Wallpaper album: \(error).")
+                completion(.failure(error))
+                return
+            }
+
+            guard success else {
+                debugLog("PhotoManager: Photos did not add asset \(asset.localIdentifier) to Photos Wallpaper album.")
+                completion(.failure(PhotosWallpaperAlbumError.assetCouldNotBeAdded))
+                return
+            }
+
+            debugLog("PhotoManager: added asset \(asset.localIdentifier) to Photos Wallpaper album.")
+            completion(.success(()))
+        }
     }
 
     private static var photoAuthorizationDescription: String {

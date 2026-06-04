@@ -134,6 +134,8 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let logFile: BoundedLogFile
     private let dateFormatter: DateFormatter
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
+    private var historyWindow: NSWindow?
+    private weak var historyTextView: NSTextView?
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -154,8 +156,15 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     }
 
     func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
-        writeQueue.sync {
+        let historyText = writeQueue.sync {
             writeWallpaperChange(photoName: photoName, screenName: screenName, timestamp: timestamp)
+            return try? String(contentsOf: logURL, encoding: .utf8)
+        }
+
+        if let historyText {
+            DispatchQueue.main.async {
+                self.updateOpenHistoryWindow(with: historyText)
+            }
         }
     }
 
@@ -168,15 +177,115 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 
-    /// Ensures the history file exists and opens it in the user's default editor/viewer.
+    /// Ensures the history file exists and opens it in a read-only app window.
     func openHistoryLog() {
         do {
-            try writeQueue.sync {
+            let historyText = try writeQueue.sync {
                 try logFile.ensureLogFileExists()
+                return try String(contentsOf: logURL, encoding: .utf8)
             }
-            NSWorkspace.shared.open(logURL)
+            showHistoryWindow(historyText)
         } catch {
             debugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
         }
+    }
+
+    private func showHistoryWindow(_ historyText: String) {
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let textView = NSTextView()
+        textView.string = historyText
+        textView.font = font
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.textContainerInset = NSSize(width: 10, height: 10)
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                                       height: CGFloat.greatestFiniteMagnitude)
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width, .height]
+
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = textView
+
+        let window = NSWindow(contentViewController: NSViewController())
+        window.title = "Wallpaper History"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.contentView = scrollView
+        window.setContentSize(historyWindowSize(for: historyText, font: font))
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate()
+        DispatchQueue.main.async {
+            textView.scrollToEndOfDocument(nil)
+        }
+        historyTextView = textView
+        historyWindow = window
+    }
+
+    private func updateOpenHistoryWindow(with historyText: String) {
+        guard let textView = historyTextView, historyWindow?.isVisible == true else { return }
+
+        let wasNearBottom = isScrolledNearBottom(textView)
+        let previousFirstVisibleCharacterIndex = firstVisibleCharacterIndex(in: textView)
+
+        if historyText.hasPrefix(textView.string) {
+            let appendedText = String(historyText.dropFirst(textView.string.count))
+            if !appendedText.isEmpty {
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: textView.font ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                    .foregroundColor: NSColor.textColor
+                ]
+                textView.textStorage?.append(NSAttributedString(string: appendedText, attributes: attributes))
+            }
+        } else {
+            textView.string = historyText
+        }
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+
+        if wasNearBottom {
+            textView.scrollToEndOfDocument(nil)
+        } else if let previousFirstVisibleCharacterIndex {
+            let characterIndex = min(previousFirstVisibleCharacterIndex, max(textView.string.count - 1, 0))
+            textView.scrollRangeToVisible(NSRange(location: characterIndex, length: 0))
+        }
+    }
+
+    private func isScrolledNearBottom(_ textView: NSTextView) -> Bool {
+        let visibleRect = textView.visibleRect
+        let distanceFromBottom = textView.bounds.maxY - visibleRect.maxY
+        return distanceFromBottom < 40
+    }
+
+    private func firstVisibleCharacterIndex(in textView: NSTextView) -> Int? {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return nil
+        }
+
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: textView.visibleRect, in: textContainer)
+        guard glyphRange.location != NSNotFound else { return nil }
+        return layoutManager.characterIndexForGlyph(at: glyphRange.location)
+    }
+
+    private func historyWindowSize(for historyText: String, font: NSFont) -> NSSize {
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1100, height: 800)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let longestLineWidth = historyText
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { NSString(string: String($0)).size(withAttributes: attributes).width }
+            .max() ?? 0
+
+        let desiredWidth = longestLineWidth + 80
+        let width = min(max(desiredWidth, 760), visibleFrame.width - 80)
+        let height = min(max(520, visibleFrame.height * 0.55), visibleFrame.height - 120)
+        return NSSize(width: width, height: height)
     }
 }

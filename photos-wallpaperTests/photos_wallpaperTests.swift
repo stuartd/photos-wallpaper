@@ -544,6 +544,16 @@ struct PhotosWallpaperTests {
         #expect(historyLogger.entries[0].photoName.contains("id:"))
         #expect(historyLogger.entries[0].screenName == "Screen 1")
     }
+
+    @Test func photoHistoryIdentifierAcceptsRawIdentifier() {
+        #expect(PhotoHistoryIdentifier.extract(from: " 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 ") == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+    }
+
+    @Test func photoHistoryIdentifierAcceptsWholeHistoryLine() {
+        let line = "IMG_6790.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001) was shown on Screen 1"
+
+        #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+    }
 }
 
 private final class FakePhotoManager: PhotoManaging {
@@ -597,6 +607,11 @@ private final class FakePhotoManager: PhotoManaging {
         return "fake-\(ObjectIdentifier(asset).hashValue)"
     }
 
+    func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult {
+        guard let asset = assetsToReturn.first else { return .notFound }
+        return .photo(asset)
+    }
+
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
         requestedAssets.append(asset)
         requestedSizes.append(targetSize)
@@ -613,6 +628,10 @@ private final class FakePhotoManager: PhotoManaging {
         for completion in completions {
             completion(NSImage(size: CGSize(width: 1, height: 1)))
         }
+    }
+
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+        completion(.success(()))
     }
 
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {

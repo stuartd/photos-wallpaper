@@ -21,12 +21,19 @@ import AppKit
 /// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
 ///   the UI.
 struct photos_wallpaperApp: App {
-    @StateObject private var cycleController = WallpaperCycleController()
+    @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
-    private let historyLogger = WallpaperHistoryLogger()
+    private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
+    private let photoHistoryLookupWindowController = PhotoHistoryLookupWindowController()
+
+    init() {
+        let historyLogger = WallpaperHistoryLogger()
+        self.historyLogger = historyLogger
+        _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
+    }
 
     var body: some Scene {
         MenuBarExtra("Wallpaper", systemImage: "photo") {
@@ -44,13 +51,18 @@ struct photos_wallpaperApp: App {
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isAboutPanelOpen)
 
-            Button("Change wallpaper now") {
+            Button("Change Wallpaper Now") {
                 cycleController.triggerNow()
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Show wallpaper history") {
+            Button("Show Wallpaper History") {
                 historyLogger.openHistoryLog()
+            }
+            .disabled(isAboutPanelOpen)
+
+            Button("Find Photo from History Line...") {
+                photoHistoryLookupWindowController.showLookup()
             }
             .disabled(isAboutPanelOpen)
 

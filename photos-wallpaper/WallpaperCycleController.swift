@@ -254,9 +254,13 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     /// Production initializer used by the app.
     convenience init() {
+        self.init(historyLogger: WallpaperHistoryLogger())
+    }
+
+    convenience init(historyLogger: WallpaperHistoryLogging) {
         self.init(photoManager: PhotoManager.shared,
                   defaults: UserDefaults.standard,
-                  historyLogger: WallpaperHistoryLogger(),
+                  historyLogger: historyLogger,
                   notifier: UserNotificationWallpaperCycleNotifier(),
                   screenProvider: AppKitScreenProvider(),
                   wakeEventObserver: AppKitWakeEventObserver(),
