@@ -23,9 +23,8 @@ final class AppDocumentOpener: AppDocumentOpening {
         versionLabel.font = .systemFont(ofSize: 13)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .center
-        
-        // TODO: Replace spacer-only credits layout with explicit AppKit spacing.
 
+        // Blank lines to put this in the centre of the dialog
         let creditsLabel = NSTextField(wrappingLabelWithString: """
         © Stuart Dunkeld 2026
         Rose Hill Solutions
