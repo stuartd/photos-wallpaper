@@ -163,7 +163,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     #if DEBUG
     case oneSecond // debug only as intended to be used for stress tests, not as an actual option
     #endif
-    case fiveSeconds
     case minute
     case fiveMinutes
     case fifteenMinutes
@@ -177,7 +176,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         var options = [
             Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
             Option(frequency: .onWakeup, displayName: "On Wake", seconds: nil),
-            Option(frequency: .fiveSeconds, displayName: "Every 5 seconds", seconds: 5),
             Option(frequency: .minute, displayName: "Every minute", seconds: 60),
             Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
             Option(frequency: .fifteenMinutes, displayName: "Every 15 minutes", seconds: 15 * 60),
@@ -323,7 +321,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                     self?.tick(trigger: .wake)
                 }
             }
-        case .fiveSeconds, .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
+        case .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
             scheduleTimerTrigger(for: frequency)
             
         #if DEBUG
