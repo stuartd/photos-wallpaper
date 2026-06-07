@@ -61,7 +61,10 @@ final class BoundedLogFile {
     private func retainedTailText() throws -> String {
         guard retainedLineCount > 0 else { return "" }
         let text = try String(contentsOf: logURL, encoding: .utf8)
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.last == "" {
+            lines.removeLast()
+        }
         let retainedLines = lines.suffix(retainedLineCount)
         guard !retainedLines.isEmpty else { return "" }
         return retainedLines.joined(separator: "\n") + "\n"
