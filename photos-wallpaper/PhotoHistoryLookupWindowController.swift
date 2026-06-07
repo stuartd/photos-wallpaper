@@ -6,7 +6,7 @@ import SwiftUI
 enum PhotoHistoryIdentifier {
     static let maxPasteCharacterCount = 20_000
     static let maxIdentifierCount = 25
-    static let exampleHistoryLine = "IMG_6790.HEIC (created Jan 1, 2026 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001) was shown on Screen 1 on January 1, 2026 at 12:00:00 AM"
+    static let exampleHistoryLine = WallpaperHistoryEntryFormatter.exampleLine
 
     struct ExtractionResult: Equatable {
         let identifiers: [String]
@@ -48,8 +48,12 @@ enum PhotoHistoryIdentifier {
         guard let markerRange = line.range(of: "id:") else { return nil }
         let identifierStart = markerRange.upperBound
         let remainder = line[identifierStart...].trimmingCharacters(in: .whitespacesAndNewlines)
-        if let closingParenthesis = remainder.firstIndex(of: ")") {
-            return normalizedIdentifier(String(remainder[..<closingParenthesis]))
+        let delimiterRanges = [
+            remainder.range(of: ")"),
+            remainder.range(of: " was shown on ")
+        ].compactMap { $0 }
+        if let delimiterRange = delimiterRanges.min(by: { $0.lowerBound < $1.lowerBound }) {
+            return normalizedIdentifier(String(remainder[..<delimiterRange.lowerBound]))
         }
         return normalizedIdentifier(remainder)
     }
@@ -108,8 +112,8 @@ final class PhotoHistoryLookupWindowController {
 
     private func promptForHistoryIdentifiers() -> PhotoHistoryIdentifier.ExtractionResult? {
         let alert = NSAlert()
-        alert.messageText = "Find Photos from History Lines"
-        alert.informativeText = "Paste one or more whole lines from wallpaper history. Pasting just Photos asset IDs also works."
+        alert.messageText = "Find Photos from Wallpaper History"
+        alert.informativeText = "Paste one or more whole lines from wallpaper history. If you know exactly what to copy from a line, that works too."
         alert.addButton(withTitle: "Find")
         alert.addButton(withTitle: "Cancel")
 
@@ -134,7 +138,7 @@ final class PhotoHistoryLookupWindowController {
             return nil
         }
         guard !extractionResult.identifiers.isEmpty else {
-            showAlert(title: "No Photo IDs Found",
+            showAlert(title: "No History Lines Found",
                       message: "Paste the whole wallpaper history line that contains the photo you want, for example:\n\n\(PhotoHistoryIdentifier.exampleHistoryLine)")
             return nil
         }
@@ -168,7 +172,7 @@ final class PhotoHistoryLookupWindowController {
 
         guard !assets.isEmpty else {
             showAlert(title: "Photos Not Found",
-                      message: "Photos Wallpaper could not find photos for those history IDs in the current Photos library.")
+                      message: "Photos Wallpaper could not find photos for those wallpaper history entries in the current Photos library.")
             return
         }
 
@@ -187,7 +191,7 @@ final class PhotoHistoryLookupWindowController {
         }
         let hostingController = NSHostingController(rootView: view)
         let previewWindow = NSWindow(contentViewController: hostingController)
-        previewWindow.title = "Find Photos from History Lines"
+        previewWindow.title = "Find Photos from Wallpaper History"
         previewWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         previewWindow.setContentSize(NSSize(width: 560, height: 560))
         previewWindow.center()
@@ -226,10 +230,10 @@ final class PhotoHistoryLookupViewModel: ObservableObject {
     var summary: String {
         var parts = ["\(assets.count) photo\(assets.count == 1 ? "" : "s") ready to add."]
         if missingIdentifierCount > 0 {
-            parts.append("\(missingIdentifierCount) ID\(missingIdentifierCount == 1 ? "" : "s") could not be found.")
+            parts.append("\(missingIdentifierCount) history entr\(missingIdentifierCount == 1 ? "y" : "ies") could not be found.")
         }
         if didReachIdentifierLimit {
-            parts.append("Only the first \(PhotoHistoryIdentifier.maxIdentifierCount) IDs were processed.")
+            parts.append("Only the first \(PhotoHistoryIdentifier.maxIdentifierCount) matching entries were processed.")
         }
         return parts.joined(separator: " ")
     }

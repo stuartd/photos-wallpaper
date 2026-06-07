@@ -549,7 +549,38 @@ struct PhotosWallpaperTests {
         #expect(PhotoHistoryIdentifier.extract(from: " 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 ") == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
     }
 
+    @Test func wallpaperHistoryEntryFormatterBuildsExpectedLine() {
+        let photoDescription = PhotoHistoryAssetDescriptionFormatter.string(filename: "IMG_6790.HEIC",
+                                                                            creationDateText: "Jan 1, 2026 at 12:00:00 AM",
+                                                                            localIdentifier: "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+
+        let line = WallpaperHistoryEntryFormatter.line(photoDescription: photoDescription,
+                                                       screenName: "Screen 1",
+                                                       shownAtText: "January 1, 2026 at 12:00:00 AM")
+
+        #expect(line == "IMG_6790.HEIC created Jan 1, 2026 at 12:00:00 AM,  id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was shown on Screen 1 on January 1, 2026 at 12:00:00 AM")
+        #expect(PhotoHistoryIdentifier.exampleHistoryLine == line)
+    }
+
+    @Test func photoHistoryAssetDescriptionFormatterPadsSingleDigitCreationDays() {
+        let singleDigitDay = PhotoHistoryAssetDescriptionFormatter.string(filename: "DSCN2550.jpg",
+                                                                          creationDateText: "1 May 2004 at 14:42:08",
+                                                                          localIdentifier: "7")
+        let twoDigitDay = PhotoHistoryAssetDescriptionFormatter.string(filename: "DSCN2550.jpg",
+                                                                       creationDateText: "11 May 2004 at 14:42:08",
+                                                                       localIdentifier: "7")
+
+        #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08,  id: 7")
+        #expect(twoDigitDay == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
+    }
+
     @Test func photoHistoryIdentifierAcceptsWholeHistoryLine() {
+        let line = "IMG_6790.HEIC created Jan 1, 2024 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was shown on Screen 1"
+
+        #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+    }
+
+    @Test func photoHistoryIdentifierAcceptsOlderParenthesizedHistoryLine() {
         let line = "IMG_6790.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001) was shown on Screen 1"
 
         #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
@@ -557,9 +588,9 @@ struct PhotosWallpaperTests {
 
     @Test func photoHistoryIdentifierExtractsMultipleHistoryLines() {
         let text = """
-        IMG_0001.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001) was shown on Screen 1
-        IMG_0002.HEIC (created Jan 2, 2024 at 12:00:00 AM, id: SECOND-ID/L0/001) was shown on Screen 1
-        IMG_0003.HEIC (created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001) was shown on Screen 1
+        IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001 was shown on Screen 1
+        IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM, id: SECOND-ID/L0/001 was shown on Screen 1
+        IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001 was shown on Screen 1
         """
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
@@ -594,9 +625,9 @@ struct PhotosWallpaperTests {
 
     @Test func photoHistoryIdentifierAcceptsMixedHistoryLinesAndRawIdentifierLines() {
         let text = """
-        IMG_0001.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001) was shown on Screen 1
+        IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001 was shown on Screen 1
         SECOND-ID/L0/001
-        IMG_0003.HEIC (created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001) was shown on Screen 1
+        IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001 was shown on Screen 1
         """
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
@@ -678,8 +709,8 @@ struct PhotosWallpaperTests {
         #expect(viewModel.didAddToAlbum)
         #expect(viewModel.statusMessage == "Added 2 photos to the Photos Wallpaper album.")
         #expect(viewModel.summary.contains("2 photos ready to add."))
-        #expect(viewModel.summary.contains("1 ID could not be found."))
-        #expect(viewModel.summary.contains("Only the first 25 IDs were processed."))
+        #expect(viewModel.summary.contains("1 history entry could not be found."))
+        #expect(viewModel.summary.contains("Only the first 25 matching entries were processed."))
     }
 }
 
@@ -734,7 +765,7 @@ private final class FakePhotoManager: PhotoManaging {
 
     func displayName(for asset: PHAsset) -> String {
         if let assetName = assetNames[ObjectIdentifier(asset)] {
-            return "\(assetName) (created Jan 1, 2024 at 12:00:00 AM, id: fake-\(ObjectIdentifier(asset).hashValue))"
+            return "\(assetName) created Jan 1, 2024 at 12:00:00 AM, id: fake-\(ObjectIdentifier(asset).hashValue)"
         }
         return "fake-\(ObjectIdentifier(asset).hashValue)"
     }

@@ -112,8 +112,6 @@ final class PhotoManager: PhotoManaging {
     /// date when available for human lookup in Photos, plus the Photos `localIdentifier` as a
     /// technical fallback for exact disambiguation.
     func displayName(for asset: PHAsset) -> String {
-        let identifierSuffix = "id: \(asset.localIdentifier)"
-
         // Perform the potentially expensive filename lookup off the main thread to avoid
         // Photos.framework fetching on demand on the main queue.
         let filename: String? = {
@@ -128,10 +126,10 @@ final class PhotoManager: PhotoManaging {
         }()
 
         if let filename = filename {
-            if let creationDate = asset.creationDate {
-                return "\(filename) (created \(Self.historyAssetDateFormatter.string(from: creationDate)), \(identifierSuffix))"
-            }
-            return "\(filename) (\(identifierSuffix))"
+            return PhotoHistoryAssetDescriptionFormatter.string(filename: filename,
+                                                                creationDate: asset.creationDate,
+                                                                localIdentifier: asset.localIdentifier,
+                                                                dateFormatter: Self.historyAssetDateFormatter)
         }
         return asset.localIdentifier
     }

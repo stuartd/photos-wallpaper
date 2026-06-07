@@ -6,6 +6,64 @@ protocol WallpaperHistoryLogging {
     func openHistoryLog()
 }
 
+struct PhotoHistoryAssetDescriptionFormatter {
+    private init() {}
+
+    static func string(filename: String, creationDate: Date?, localIdentifier: String, dateFormatter: DateFormatter) -> String {
+        string(filename: filename,
+               creationDateText: creationDate.map { dateFormatter.string(from: $0) },
+               localIdentifier: localIdentifier,
+               creationDay: creationDate.map { Calendar.current.component(.day, from: $0) })
+    }
+
+    static func string(filename: String, creationDateText: String?, localIdentifier: String) -> String {
+        string(filename: filename,
+               creationDateText: creationDateText,
+               localIdentifier: localIdentifier,
+               creationDay: dayNumber(in: creationDateText))
+    }
+
+    private static func string(filename: String, creationDateText: String?, localIdentifier: String, creationDay: Int?) -> String {
+        let identifierText = "id: \(localIdentifier)"
+        if let creationDateText {
+            return "\(filename) created \(creationDateText)\(identifierSeparator(forCreationDay: creationDay))\(identifierText)"
+        }
+        return "\(filename), \(identifierText)"
+    }
+
+    private static func identifierSeparator(forCreationDay day: Int?) -> String {
+        guard let day, (1...9).contains(day) else { return ", " }
+        return ",  "
+    }
+
+    private static func dayNumber(in dateText: String?) -> Int? {
+        dateText?
+            .components(separatedBy: CharacterSet.decimalDigits.inverted)
+            .compactMap(Int.init)
+            .first { (1...31).contains($0) }
+    }
+}
+
+struct WallpaperHistoryEntryFormatter {
+    private init() {}
+
+    static let exampleLine = line(photoDescription: PhotoHistoryAssetDescriptionFormatter.string(
+        filename: "IMG_6790.HEIC",
+        creationDateText: "Jan 1, 2026 at 12:00:00 AM",
+        localIdentifier: "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001"
+    ), screenName: "Screen 1", shownAtText: "January 1, 2026 at 12:00:00 AM")
+
+    static func line(photoDescription: String, screenName: String, timestamp: Date, dateFormatter: DateFormatter) -> String {
+        line(photoDescription: photoDescription,
+             screenName: screenName,
+             shownAtText: dateFormatter.string(from: timestamp))
+    }
+
+    static func line(photoDescription: String, screenName: String, shownAtText: String) -> String {
+        "\(photoDescription) was shown on \(screenName) on \(shownAtText)"
+    }
+}
+
 func debugLog(_ message: @autoclosure () -> String) {
     let text = message()
     AppRuntimeLogger.shared.record(text)
@@ -173,7 +231,10 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
 
     private func writeWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
         do {
-            let line = "\(photoName) was shown on \(screenName) on \(dateFormatter.string(from: timestamp))\n"
+            let line = WallpaperHistoryEntryFormatter.line(photoDescription: photoName,
+                                                           screenName: screenName,
+                                                           timestamp: timestamp,
+                                                           dateFormatter: dateFormatter) + "\n"
             try logFile.append(line)
         } catch {
             debugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
@@ -225,7 +286,8 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         window.center()
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
         DispatchQueue.main.async {
             textView.scrollToEndOfDocument(nil)
         }

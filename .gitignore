@@ -69,3 +69,6 @@ photos-wallpaper.xcodeproj/project.xcworkspace/xcuserdata/stuart.xcuserdatad/Use
 *.dmg
 
 /releases/
+
+.derivedData/
+

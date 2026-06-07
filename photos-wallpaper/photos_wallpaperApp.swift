@@ -61,7 +61,7 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Find Photos from History Lines...") {
+            Button("Find Photos from Wallpaper History...") {
                 photoHistoryLookupWindowController.showLookup()
             }
             .disabled(isAboutPanelOpen)
