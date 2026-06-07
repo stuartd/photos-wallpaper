@@ -554,6 +554,133 @@ struct PhotosWallpaperTests {
 
         #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
     }
+
+    @Test func photoHistoryIdentifierExtractsMultipleHistoryLines() {
+        let text = """
+        IMG_0001.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001) was shown on Screen 1
+        IMG_0002.HEIC (created Jan 2, 2024 at 12:00:00 AM, id: SECOND-ID/L0/001) was shown on Screen 1
+        IMG_0003.HEIC (created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001) was shown on Screen 1
+        """
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+
+        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001", "THIRD-ID/L0/001"])
+        #expect(!result.isPasteTooLarge)
+        #expect(!result.didReachIdentifierLimit)
+    }
+
+    @Test func photoHistoryIdentifierDeduplicatesIdentifiers() {
+        let text = """
+        IMG_0001.HEIC (id: SAME-ID/L0/001) was shown on Screen 1
+        IMG_0001.HEIC (id: SAME-ID/L0/001) was shown on Screen 1
+        IMG_0002.HEIC (id: OTHER-ID/L0/001) was shown on Screen 1
+        """
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+
+        #expect(result.identifiers == ["SAME-ID/L0/001", "OTHER-ID/L0/001"])
+    }
+
+    @Test func photoHistoryIdentifierAcceptsMultipleRawIdentifierLines() {
+        let text = """
+        FIRST-ID/L0/001
+        SECOND-ID/L0/001
+        """
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+
+        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001"])
+    }
+
+    @Test func photoHistoryIdentifierAcceptsMixedHistoryLinesAndRawIdentifierLines() {
+        let text = """
+        IMG_0001.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001) was shown on Screen 1
+        SECOND-ID/L0/001
+        IMG_0003.HEIC (created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001) was shown on Screen 1
+        """
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+
+        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001", "THIRD-ID/L0/001"])
+    }
+
+    @Test func photoHistoryIdentifierRejectsLargePastes() {
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: String(repeating: "a", count: 11),
+                                                               maxCharacterCount: 10)
+
+        #expect(result.identifiers.isEmpty)
+        #expect(result.isPasteTooLarge)
+        #expect(!result.didReachIdentifierLimit)
+    }
+
+    @Test func photoHistoryIdentifierStopsAtIdentifierLimit() {
+        let text = (1...5)
+            .map { "IMG_\($0).HEIC (id: ID-\($0)/L0/001) was shown on Screen 1" }
+            .joined(separator: "\n")
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text, maxIdentifierCount: 3)
+
+        #expect(result.identifiers == ["ID-1/L0/001", "ID-2/L0/001", "ID-3/L0/001"])
+        #expect(result.didReachIdentifierLimit)
+    }
+
+    @Test func photoHistoryIdentifierDoesNotTreatLogTextWithoutIdentifierAsRawIdentifier() {
+        let text = "IMG_6790.HEIC was shown on Screen 1 on January 1, 2026 at 12:00:00 AM"
+
+        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+
+        #expect(result.identifiers.isEmpty)
+    }
+
+    @Test func photoHistoryPhotoFinderUsesOneBatchLookupAndPreservesSummaryData() {
+        let firstAsset = makeFakeAsset()
+        let secondAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
+        photoManager.missingLookupIdentifiers = ["MISSING-ID/L0/001"]
+        let extractionResult = PhotoHistoryIdentifier.ExtractionResult(
+            identifiers: ["FIRST-ID/L0/001", "MISSING-ID/L0/001", "SECOND-ID/L0/001"],
+            isPasteTooLarge: false,
+            didReachIdentifierLimit: true
+        )
+
+        let result = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult)
+
+        guard case .photos(let assets, let missingIdentifierCount, let didReachIdentifierLimit) = result else {
+            Issue.record("Expected photo lookup to return found assets.")
+            return
+        }
+        #expect(photoManager.batchLookupRequests == [["FIRST-ID/L0/001", "MISSING-ID/L0/001", "SECOND-ID/L0/001"]])
+        #expect(photoManager.singleLookupRequests.isEmpty)
+        #expect(assets.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
+        #expect(missingIdentifierCount == 1)
+        #expect(didReachIdentifierLimit)
+    }
+
+    @Test func photoHistoryLookupViewModelAddsEveryFoundAssetToAlbum() async {
+        let firstAsset = makeFakeAsset()
+        let secondAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset],
+                                            completesImageRequestsImmediately: false)
+        let viewModel = PhotoHistoryLookupViewModel(assets: [firstAsset, secondAsset],
+                                                    missingIdentifierCount: 1,
+                                                    didReachIdentifierLimit: true,
+                                                    photoManager: photoManager)
+
+        viewModel.addToAlbum()
+        let didAddAssets = await photoManager.waitForAlbumAddCount(2)
+        let didFinishUpdatingViewModel = await waitForCondition {
+            viewModel.didAddToAlbum
+        }
+
+        #expect(didAddAssets)
+        #expect(didFinishUpdatingViewModel)
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
+        #expect(viewModel.didAddToAlbum)
+        #expect(viewModel.statusMessage == "Added 2 photos to the Photos Wallpaper album.")
+        #expect(viewModel.summary.contains("2 photos ready to add."))
+        #expect(viewModel.summary.contains("1 ID could not be found."))
+        #expect(viewModel.summary.contains("Only the first 25 IDs were processed."))
+    }
 }
 
 private final class FakePhotoManager: PhotoManaging {
@@ -567,6 +694,11 @@ private final class FakePhotoManager: PhotoManaging {
     private(set) var requestedAssets: [PHAsset] = []
     private(set) var requestedSizes: [CGSize] = []
     private(set) var wallpaperAssignments: [(image: NSImage, screen: NSScreen)] = []
+    private(set) var albumAddRequests: [PHAsset] = []
+    private(set) var singleLookupRequests: [String] = []
+    private(set) var batchLookupRequests: [[String]] = []
+    var missingLookupIdentifiers = Set<String>()
+    var photoLookupOverride: PhotoAssetsLookupResult?
     var shouldSucceedSettingWallpaper = true
 
     init(assetsToReturn: [PHAsset]? = nil,
@@ -608,8 +740,37 @@ private final class FakePhotoManager: PhotoManaging {
     }
 
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult {
-        guard let asset = assetsToReturn.first else { return .notFound }
-        return .photo(asset)
+        singleLookupRequests.append(localIdentifier)
+        switch findPhotos(localIdentifiers: [localIdentifier]) {
+        case .photos(let assets, _):
+            guard let asset = assets.first else { return .notFound }
+            return .photo(asset)
+        case .waitingForAuthorization:
+            return .waitingForAuthorization
+        case .permissionDenied:
+            return .permissionDenied
+        case .unavailable:
+            return .unavailable
+        }
+    }
+
+    func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult {
+        batchLookupRequests.append(localIdentifiers)
+        if let photoLookupOverride { return photoLookupOverride }
+
+        var foundAssets: [PHAsset] = []
+        var missingIdentifierCount = 0
+        var nextAssetIndex = 0
+        for identifier in localIdentifiers {
+            if missingLookupIdentifiers.contains(identifier) || nextAssetIndex >= assetsToReturn.count {
+                missingIdentifierCount += 1
+                continue
+            }
+
+            foundAssets.append(assetsToReturn[nextAssetIndex])
+            nextAssetIndex += 1
+        }
+        return .photos(foundAssets, missingIdentifierCount: missingIdentifierCount)
     }
 
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
@@ -631,6 +792,7 @@ private final class FakePhotoManager: PhotoManaging {
     }
 
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+        albumAddRequests.append(asset)
         completion(.success(()))
     }
 
@@ -642,6 +804,16 @@ private final class FakePhotoManager: PhotoManaging {
     func waitForWallpaperAssignmentCount(_ count: Int) async -> Bool {
         for _ in 0..<100 {
             if wallpaperAssignments.count >= count {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
+    }
+
+    func waitForAlbumAddCount(_ count: Int) async -> Bool {
+        for _ in 0..<100 {
+            if albumAddRequests.count >= count {
                 return true
             }
             try? await Task.sleep(for: .milliseconds(10))
@@ -832,4 +1004,14 @@ private extension NSScreen {
 private func makeFakeAsset() -> PHAsset {
     let object: AnyObject = NSObject()
     return unsafeBitCast(object, to: PHAsset.self)
+}
+
+private func waitForCondition(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
+    for _ in 0..<100 {
+        if await condition() {
+            return true
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return false
 }

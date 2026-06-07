@@ -4,61 +4,112 @@ import Photos
 import SwiftUI
 
 enum PhotoHistoryIdentifier {
-    static func extract(from pastedText: String) -> String? {
-        let trimmedText = pastedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else { return nil }
+    static let maxPasteCharacterCount = 20_000
+    static let maxIdentifierCount = 25
+    static let exampleHistoryLine = "IMG_6790.HEIC (created Jan 1, 2026 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001) was shown on Screen 1 on January 1, 2026 at 12:00:00 AM"
 
-        if let markerRange = trimmedText.range(of: "id:") {
-            let identifierStart = markerRange.upperBound
-            let remainder = trimmedText[identifierStart...].trimmingCharacters(in: .whitespacesAndNewlines)
-            if let closingParenthesis = remainder.firstIndex(of: ")") {
-                return normalizedIdentifier(String(remainder[..<closingParenthesis]))
-            }
-            return normalizedIdentifier(remainder)
+    struct ExtractionResult: Equatable {
+        let identifiers: [String]
+        let isPasteTooLarge: Bool
+        let didReachIdentifierLimit: Bool
+    }
+
+    static func extract(from pastedText: String) -> String? {
+        extractIdentifiers(from: pastedText).identifiers.first
+    }
+
+    static func extractIdentifiers(from pastedText: String,
+                                   maxCharacterCount: Int = maxPasteCharacterCount,
+                                   maxIdentifierCount: Int = maxIdentifierCount) -> ExtractionResult {
+        let trimmedText = pastedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return ExtractionResult(identifiers: [], isPasteTooLarge: false, didReachIdentifierLimit: false)
+        }
+        guard trimmedText.count <= maxCharacterCount else {
+            return ExtractionResult(identifiers: [], isPasteTooLarge: true, didReachIdentifierLimit: false)
         }
 
-        return normalizedIdentifier(trimmedText)
+        var identifiers: [String] = []
+        var seenIdentifiers = Set<String>()
+        for line in trimmedText.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard let identifier = identifier(in: String(line)) ?? normalizedRawIdentifier(String(line)) else { continue }
+            guard !seenIdentifiers.contains(identifier) else { continue }
+            identifiers.append(identifier)
+            seenIdentifiers.insert(identifier)
+            if identifiers.count == maxIdentifierCount {
+                return ExtractionResult(identifiers: identifiers, isPasteTooLarge: false, didReachIdentifierLimit: true)
+            }
+        }
+
+        return ExtractionResult(identifiers: identifiers, isPasteTooLarge: false, didReachIdentifierLimit: false)
+    }
+
+    private static func identifier(in line: String) -> String? {
+        guard let markerRange = line.range(of: "id:") else { return nil }
+        let identifierStart = markerRange.upperBound
+        let remainder = line[identifierStart...].trimmingCharacters(in: .whitespacesAndNewlines)
+        if let closingParenthesis = remainder.firstIndex(of: ")") {
+            return normalizedIdentifier(String(remainder[..<closingParenthesis]))
+        }
+        return normalizedIdentifier(remainder)
     }
 
     private static func normalizedIdentifier(_ identifier: String) -> String? {
         let trimmedIdentifier = identifier.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ")")))
         return trimmedIdentifier.isEmpty ? nil : trimmedIdentifier
     }
+
+    private static func normalizedRawIdentifier(_ identifier: String) -> String? {
+        guard let trimmedIdentifier = normalizedIdentifier(identifier) else { return nil }
+        guard trimmedIdentifier.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return nil }
+        guard trimmedIdentifier.contains("/") else { return nil }
+        return trimmedIdentifier
+    }
+}
+
+enum PhotoHistoryPhotoFindingResult {
+    case photos([PHAsset], missingIdentifierCount: Int, didReachIdentifierLimit: Bool)
+    case waitingForAuthorization
+    case permissionDenied
+    case unavailable
+}
+
+struct PhotoHistoryPhotoFinder {
+    let photoManager: PhotoManaging
+
+    func findPhotos(for extractionResult: PhotoHistoryIdentifier.ExtractionResult) -> PhotoHistoryPhotoFindingResult {
+        switch photoManager.findPhotos(localIdentifiers: extractionResult.identifiers) {
+        case .photos(let assets, let missingIdentifierCount):
+            return .photos(assets,
+                           missingIdentifierCount: missingIdentifierCount,
+                           didReachIdentifierLimit: extractionResult.didReachIdentifierLimit)
+        case .waitingForAuthorization:
+            return .waitingForAuthorization
+        case .permissionDenied:
+            return .permissionDenied
+        case .unavailable:
+            return .unavailable
+        }
+    }
 }
 
 final class PhotoHistoryLookupWindowController {
-    private let photoManager: PhotoManager
+    private let photoManager: PhotoManaging
     private var window: NSWindow?
 
-    init(photoManager: PhotoManager = .shared) {
+    init(photoManager: PhotoManaging = PhotoManager.shared) {
         self.photoManager = photoManager
     }
 
     func showLookup() {
-        guard let identifier = promptForHistoryIdentifier() else { return }
-
-        switch photoManager.findPhoto(localIdentifier: identifier) {
-        case .photo(let asset):
-            showPreview(for: asset)
-        case .waitingForAuthorization:
-            showAlert(title: "Photos Access Needed",
-                      message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
-        case .permissionDenied:
-            showAlert(title: "Photos Access Needed",
-                      message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
-        case .notFound:
-            showAlert(title: "Photo Not Found",
-                      message: "Photos Wallpaper could not find a photo for that history ID in the current Photos library.")
-        case .unavailable:
-            showAlert(title: "Photos Unavailable",
-                      message: "Photos Wallpaper could not search your Photos library right now.")
-        }
+        guard let extractionResult = promptForHistoryIdentifiers() else { return }
+        findPhotos(for: extractionResult)
     }
 
-    private func promptForHistoryIdentifier() -> String? {
+    private func promptForHistoryIdentifiers() -> PhotoHistoryIdentifier.ExtractionResult? {
         let alert = NSAlert()
-        alert.messageText = "Find Photo from History Line"
-        alert.informativeText = "Paste the whole line from wallpaper history that contains the photo you want. Pasting just the Photos asset ID also works."
+        alert.messageText = "Find Photos from History Lines"
+        alert.informativeText = "Paste one or more whole lines from wallpaper history. Pasting just Photos asset IDs also works."
         alert.addButton(withTitle: "Find")
         alert.addButton(withTitle: "Cancel")
 
@@ -76,21 +127,67 @@ final class PhotoHistoryLookupWindowController {
         alert.accessoryView = scrollView
 
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        guard let identifier = PhotoHistoryIdentifier.extract(from: input.string) else {
-            showAlert(title: "No History Line", message: "Paste the whole wallpaper history line that contains the photo you want.")
+        let extractionResult = PhotoHistoryIdentifier.extractIdentifiers(from: input.string)
+        if extractionResult.isPasteTooLarge {
+            showAlert(title: "Paste Too Large",
+                      message: "Paste up to \(PhotoHistoryIdentifier.maxPasteCharacterCount) characters of wallpaper history at a time.")
             return nil
         }
-        return identifier
+        guard !extractionResult.identifiers.isEmpty else {
+            showAlert(title: "No Photo IDs Found",
+                      message: "Paste the whole wallpaper history line that contains the photo you want, for example:\n\n\(PhotoHistoryIdentifier.exampleHistoryLine)")
+            return nil
+        }
+        return extractionResult
     }
 
-    private func showPreview(for asset: PHAsset) {
-        let viewModel = PhotoHistoryLookupViewModel(asset: asset, photoManager: photoManager)
+    private func findPhotos(for extractionResult: PhotoHistoryIdentifier.ExtractionResult) {
+        let lookupResult = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult)
+        let assets: [PHAsset]
+        let missingIdentifierCount: Int
+        let didReachIdentifierLimit: Bool
+
+        switch lookupResult {
+        case .photos(let foundAssets, let notFoundCount, let reachedLimit):
+            assets = foundAssets
+            missingIdentifierCount = notFoundCount
+            didReachIdentifierLimit = reachedLimit
+        case .waitingForAuthorization:
+            showAlert(title: "Photos Access Needed",
+                      message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
+            return
+        case .permissionDenied:
+            showAlert(title: "Photos Access Needed",
+                      message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
+            return
+        case .unavailable:
+            showAlert(title: "Photos Unavailable",
+                      message: "Photos Wallpaper could not search your Photos library right now.")
+            return
+        }
+
+        guard !assets.isEmpty else {
+            showAlert(title: "Photos Not Found",
+                      message: "Photos Wallpaper could not find photos for those history IDs in the current Photos library.")
+            return
+        }
+
+        showPreview(for: assets,
+                    missingIdentifierCount: missingIdentifierCount,
+                    didReachIdentifierLimit: didReachIdentifierLimit)
+    }
+
+    private func showPreview(for assets: [PHAsset], missingIdentifierCount: Int, didReachIdentifierLimit: Bool) {
+        let viewModel = PhotoHistoryLookupViewModel(assets: assets,
+                                                    missingIdentifierCount: missingIdentifierCount,
+                                                    didReachIdentifierLimit: didReachIdentifierLimit,
+                                                    photoManager: photoManager)
         let view = PhotoHistoryLookupView(viewModel: viewModel) { [weak self] in
             self?.window?.close()
         }
         let hostingController = NSHostingController(rootView: view)
         let previewWindow = NSWindow(contentViewController: hostingController)
-        previewWindow.title = "Find Photo from History Line"
+        previewWindow.title = "Find Photos from History Lines"
         previewWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         previewWindow.setContentSize(NSSize(width: 560, height: 560))
         previewWindow.center()
@@ -116,17 +213,40 @@ final class PhotoHistoryLookupViewModel: ObservableObject {
     @Published private(set) var isAddingToAlbum = false
     @Published private(set) var didAddToAlbum = false
 
-    let asset: PHAsset
-    let displayName: String
-    private let photoManager: PhotoManager
+    let assets: [PHAsset]
+    let displayNames: [String]
+    let missingIdentifierCount: Int
+    let didReachIdentifierLimit: Bool
+    private let photoManager: PhotoManaging
 
-    init(asset: PHAsset, photoManager: PhotoManager) {
-        self.asset = asset
+    var title: String {
+        assets.count == 1 ? displayNames[0] : "\(assets.count) Photos Found"
+    }
+
+    var summary: String {
+        var parts = ["\(assets.count) photo\(assets.count == 1 ? "" : "s") ready to add."]
+        if missingIdentifierCount > 0 {
+            parts.append("\(missingIdentifierCount) ID\(missingIdentifierCount == 1 ? "" : "s") could not be found.")
+        }
+        if didReachIdentifierLimit {
+            parts.append("Only the first \(PhotoHistoryIdentifier.maxIdentifierCount) IDs were processed.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    init(assets: [PHAsset],
+         missingIdentifierCount: Int,
+         didReachIdentifierLimit: Bool,
+         photoManager: PhotoManaging) {
+        self.assets = assets
         self.photoManager = photoManager
-        self.displayName = photoManager.displayName(for: asset)
+        self.displayNames = assets.map { photoManager.displayName(for: $0) }
+        self.missingIdentifierCount = missingIdentifierCount
+        self.didReachIdentifierLimit = didReachIdentifierLimit
     }
 
     func loadPreview() {
+        guard let asset = assets.first else { return }
         let targetSize = CGSize(width: 900, height: 700)
         photoManager.requestImage(for: asset, targetSize: targetSize) { [weak self] image in
             DispatchQueue.main.async {
@@ -145,16 +265,36 @@ final class PhotoHistoryLookupViewModel: ObservableObject {
         isAddingToAlbum = true
         statusMessage = nil
 
-        photoManager.addToPhotosWallpaperAlbum(asset: asset) { [weak self] result in
+        addAssetToAlbum(at: 0, failedCount: 0)
+    }
+
+    private func addAssetToAlbum(at index: Int, failedCount: Int) {
+        guard index < assets.count else {
             DispatchQueue.main.async {
-                self?.isAddingToAlbum = false
-                switch result {
-                case .success:
-                    self?.didAddToAlbum = true
-                    self?.statusMessage = "Added to the Photos Wallpaper album."
-                case .failure(let error):
-                    self?.statusMessage = error.localizedDescription
+                self.isAddingToAlbum = false
+                self.didAddToAlbum = failedCount == 0
+                if failedCount == 0 {
+                    self.statusMessage = "Added \(self.assets.count) photo\(self.assets.count == 1 ? "" : "s") to the Photos Wallpaper album."
+                } else {
+                    let addedCount = self.assets.count - failedCount
+                    self.statusMessage = "Added \(addedCount) photo\(addedCount == 1 ? "" : "s"). \(failedCount) photo\(failedCount == 1 ? "" : "s") could not be added."
                 }
+            }
+            return
+        }
+
+        photoManager.addToPhotosWallpaperAlbum(asset: assets[index]) { [weak self] result in
+            guard let self else { return }
+            let nextFailedCount: Int
+            switch result {
+            case .success:
+                nextFailedCount = failedCount
+            case .failure(let error):
+                debugLog("PhotoHistoryLookupViewModel: failed to add photo \(index + 1) to album: \(error)")
+                nextFailedCount = failedCount + 1
+            }
+            DispatchQueue.main.async {
+                self.addAssetToAlbum(at: index + 1, failedCount: nextFailedCount)
             }
         }
     }
@@ -180,10 +320,30 @@ struct PhotoHistoryLookupView: View {
             .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Text(viewModel.displayName)
+            Text(viewModel.title)
                 .font(.callout)
                 .textSelection(.enabled)
                 .lineLimit(3)
+
+            Text(viewModel.summary)
+                .font(.callout)
+                .foregroundStyle(Color.secondary)
+                .textSelection(.enabled)
+
+            if viewModel.displayNames.count > 1 {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(viewModel.displayNames.enumerated()), id: \.offset) { _, displayName in
+                            Text(displayName)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 86)
+            }
 
             if let statusMessage = viewModel.statusMessage {
                 Text(statusMessage)

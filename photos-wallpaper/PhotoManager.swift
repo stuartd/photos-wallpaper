@@ -17,6 +17,13 @@ enum PhotoAssetLookupResult {
     case unavailable
 }
 
+enum PhotoAssetsLookupResult {
+    case photos([PHAsset], missingIdentifierCount: Int)
+    case waitingForAuthorization
+    case permissionDenied
+    case unavailable
+}
+
 enum PhotosWallpaperAlbumError: LocalizedError {
     case albumUnavailable
     case assetCouldNotBeAdded
@@ -35,6 +42,7 @@ protocol PhotoManaging: AnyObject {
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
+    func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
@@ -132,15 +140,46 @@ final class PhotoManager: PhotoManaging {
         let trimmedIdentifier = localIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedIdentifier.isEmpty else { return .notFound }
 
-        switch refreshPhotos() {
-        case .ready:
-            let result = PHAsset.fetchAssets(withLocalIdentifiers: [trimmedIdentifier], options: nil)
-            guard let asset = result.firstObject else {
+        switch findPhotos(localIdentifiers: [trimmedIdentifier]) {
+        case .photos(let assets, _):
+            guard let asset = assets.first else {
                 debugLog("PhotoManager: no Photos asset found for history identifier \(trimmedIdentifier).")
                 return .notFound
             }
             debugLog("PhotoManager: found Photos asset for history identifier \(trimmedIdentifier).")
             return .photo(asset)
+        case .waitingForAuthorization:
+            return .waitingForAuthorization
+        case .permissionDenied:
+            return .permissionDenied
+        case .unavailable:
+            return .unavailable
+        }
+    }
+
+    func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult {
+        let trimmedIdentifiers = localIdentifiers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !trimmedIdentifiers.isEmpty else {
+            return .photos([], missingIdentifierCount: 0)
+        }
+
+        switch refreshPhotos() {
+        case .ready:
+            let result = PHAsset.fetchAssets(withLocalIdentifiers: trimmedIdentifiers, options: nil)
+            var assetsByIdentifier = [String: PHAsset]()
+            result.enumerateObjects { asset, _, _ in
+                assetsByIdentifier[asset.localIdentifier] = asset
+            }
+
+            let assets = trimmedIdentifiers.compactMap { assetsByIdentifier[$0] }
+            let missingIdentifierCount = trimmedIdentifiers.count - assets.count
+            debugLog("PhotoManager: found \(assets.count) Photos asset(s) for \(trimmedIdentifiers.count) history identifier(s).")
+            if missingIdentifierCount > 0 {
+                debugLog("PhotoManager: \(missingIdentifierCount) history identifier(s) were not found in Photos.")
+            }
+            return .photos(assets, missingIdentifierCount: missingIdentifierCount)
         case .waitingForAuthorization:
             return .waitingForAuthorization
         case .permissionDenied:
