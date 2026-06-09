@@ -229,6 +229,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 ///   dependencies.
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
+    private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
 
     @Published var frequency: CycleFrequency? {
         didSet {
@@ -264,7 +265,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   notifier: UserNotificationWallpaperCycleNotifier(),
                   screenProvider: AppKitScreenProvider(),
                   wakeEventObserver: AppKitWakeEventObserver(),
-                  timerScheduler: FoundationTimerScheduler())
+                  timerScheduler: FoundationTimerScheduler(),
+                  legacyDefaultsURL: Self.defaultLegacyDefaultsURL)
     }
 
     /// Injection-friendly initializer used by tests and by the convenience initializer above.
@@ -274,7 +276,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          notifier: WallpaperCycleNotifying,
          screenProvider: ScreenProviding,
          wakeEventObserver: WakeEventObserving,
-         timerScheduler: TimerScheduling) {
+         timerScheduler: TimerScheduling,
+         legacyDefaultsURL: URL? = nil) {
         self.photoManager = photoManager
         self.defaults = defaults
         self.historyLogger = historyLogger
@@ -282,12 +285,41 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.screenProvider = screenProvider
         self.wakeEventObserver = wakeEventObserver
         self.timerScheduler = timerScheduler
-        if let raw = defaults.string(forKey: Self.defaultsKey),
+        if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
         } else {
             self.frequency = nil
         }
+    }
+
+    private static var defaultLegacyDefaultsURL: URL? {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Preferences", isDirectory: true)
+            .appendingPathComponent(legacyDefaultsFilename)
+    }
+
+    private static func storedFrequencyRawValue(defaults: KeyValueStoring, legacyDefaultsURL: URL?) -> String? {
+        if let raw = defaults.string(forKey: defaultsKey) {
+            return raw
+        }
+
+        guard let legacyRaw = legacyFrequencyRawValue(from: legacyDefaultsURL),
+              CycleFrequency(rawValue: legacyRaw) != nil else {
+            return nil
+        }
+        defaults.set(legacyRaw, forKey: defaultsKey)
+        debugLog("WallpaperCycleController: migrated wallpaper schedule from legacy preferences.")
+        return legacyRaw
+    }
+
+    private static func legacyFrequencyRawValue(from url: URL?) -> String? {
+        guard let url,
+              let legacyDefaults = NSDictionary(contentsOf: url),
+              let raw = legacyDefaults[defaultsKey] as? String else {
+            return nil
+        }
+        return raw
     }
 
     /// Runs one wallpaper cycle immediately.

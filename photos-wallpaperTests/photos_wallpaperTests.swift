@@ -185,6 +185,61 @@ struct PhotosWallpaperTests {
         #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
+    @Test func migratesSavedFrequencyFromLegacyPreferencesWhenCurrentDefaultsAreEmpty() throws {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let legacyDefaultsURL = temporaryTestDirectory().appendingPathComponent("com.rosehillsolutions.photoswallpaper.plist")
+        defer { try? FileManager.default.removeItem(at: legacyDefaultsURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: legacyDefaultsURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        NSDictionary(dictionary: ["cycleFrequency": CycleFrequency.fiveMinutes.rawValue])
+            .write(to: legacyDefaultsURL, atomically: true)
+
+        let controller = WallpaperCycleController(
+            photoManager: FakePhotoManager(),
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            legacyDefaultsURL: legacyDefaultsURL
+        )
+
+        #expect(controller.frequency == .fiveMinutes)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.fiveMinutes.rawValue)
+        let expectedIntervals: [TimeInterval] = [5 * 60]
+        #expect(scheduler.scheduledIntervals == expectedIntervals)
+    }
+
+    @Test func currentSavedFrequencyWinsOverLegacyPreferences() throws {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.day.rawValue
+        let scheduler = FakeTimerScheduler()
+        let legacyDefaultsURL = temporaryTestDirectory().appendingPathComponent("com.rosehillsolutions.photoswallpaper.plist")
+        defer { try? FileManager.default.removeItem(at: legacyDefaultsURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: legacyDefaultsURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        NSDictionary(dictionary: ["cycleFrequency": CycleFrequency.fiveMinutes.rawValue])
+            .write(to: legacyDefaultsURL, atomically: true)
+
+        let controller = WallpaperCycleController(
+            photoManager: FakePhotoManager(),
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            legacyDefaultsURL: legacyDefaultsURL
+        )
+
+        #expect(controller.frequency == .day)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
+        let expectedIntervals: [TimeInterval] = [60 * 60 * 24]
+        #expect(scheduler.scheduledIntervals == expectedIntervals)
+    }
+
     @Test func changingFrequencyPersistsValueAndReschedulesTimer() {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.hour.rawValue
@@ -545,6 +600,32 @@ struct PhotosWallpaperTests {
         #expect(historyLogger.entries[0].screenName == "Screen 1")
     }
 
+    @Test func boundedLogFileCreatesMissingFileAndAppendsText() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logFile = BoundedLogFile(logURL: logURL, maxSizeBytes: 1_024, retainedLineCount: 10)
+
+        try logFile.append("first\n")
+        try logFile.append("second\n")
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "first\nsecond\n")
+    }
+
+    @Test func boundedLogFileTrimsToRecentTailBeforeAppendingWhenSizeLimitWouldBeExceeded() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logFile = BoundedLogFile(logURL: logURL, maxSizeBytes: 15, retainedLineCount: 2)
+
+        try logFile.append("one\n")
+        try logFile.append("two\n")
+        try logFile.append("three\n")
+        try logFile.append("four\n")
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "two\nthree\nfour\n")
+    }
+
     @Test func photoHistoryIdentifierAcceptsRawIdentifier() {
         #expect(PhotoHistoryIdentifier.extract(from: " 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 ") == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
     }
@@ -687,6 +768,36 @@ struct PhotosWallpaperTests {
         #expect(didReachIdentifierLimit)
     }
 
+    @Test func photoHistoryPhotoFinderPropagatesAuthorizationFailures() {
+        let extractionResult = PhotoHistoryIdentifier.ExtractionResult(
+            identifiers: ["FIRST-ID/L0/001"],
+            isPasteTooLarge: false,
+            didReachIdentifierLimit: false
+        )
+        let photoManager = FakePhotoManager()
+
+        photoManager.photoLookupOverride = .waitingForAuthorization
+        if case .waitingForAuthorization = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
+            #expect(true)
+        } else {
+            Issue.record("Expected waiting-for-authorization lookup result.")
+        }
+
+        photoManager.photoLookupOverride = .permissionDenied
+        if case .permissionDenied = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
+            #expect(true)
+        } else {
+            Issue.record("Expected permission-denied lookup result.")
+        }
+
+        photoManager.photoLookupOverride = .unavailable
+        if case .unavailable = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
+            #expect(true)
+        } else {
+            Issue.record("Expected unavailable lookup result.")
+        }
+    }
+
     @Test func photoHistoryLookupViewModelAddsEveryFoundAssetToAlbum() async {
         let firstAsset = makeFakeAsset()
         let secondAsset = makeFakeAsset()
@@ -712,6 +823,38 @@ struct PhotosWallpaperTests {
         #expect(viewModel.summary.contains("1 history entry could not be found."))
         #expect(viewModel.summary.contains("Only the first 25 matching entries were processed."))
     }
+
+    @Test func photoHistoryLookupViewModelReportsPartialAlbumAddFailures() async {
+        let firstAsset = makeFakeAsset()
+        let secondAsset = makeFakeAsset()
+        let thirdAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset, thirdAsset])
+        photoManager.albumAddResults = [
+            .success(()),
+            .failure(TestError.expectedFailure),
+            .success(())
+        ]
+        let viewModel = PhotoHistoryLookupViewModel(assets: [firstAsset, secondAsset, thirdAsset],
+                                                    missingIdentifierCount: 0,
+                                                    didReachIdentifierLimit: false,
+                                                    photoManager: photoManager)
+
+        viewModel.addToAlbum()
+        let didAddAssets = await photoManager.waitForAlbumAddCount(3)
+        let didFinishUpdatingViewModel = await waitForCondition {
+            viewModel.statusMessage == "Added 2 photos. 1 photo could not be added."
+        }
+
+        #expect(didAddAssets)
+        #expect(didFinishUpdatingViewModel)
+        #expect(!viewModel.didAddToAlbum)
+        #expect(!viewModel.isAddingToAlbum)
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [
+            ObjectIdentifier(firstAsset),
+            ObjectIdentifier(secondAsset),
+            ObjectIdentifier(thirdAsset)
+        ])
+    }
 }
 
 private final class FakePhotoManager: PhotoManaging {
@@ -730,6 +873,7 @@ private final class FakePhotoManager: PhotoManaging {
     private(set) var batchLookupRequests: [[String]] = []
     var missingLookupIdentifiers = Set<String>()
     var photoLookupOverride: PhotoAssetsLookupResult?
+    var albumAddResults: [Result<Void, Error>] = []
     var shouldSucceedSettingWallpaper = true
 
     init(assetsToReturn: [PHAsset]? = nil,
@@ -824,7 +968,11 @@ private final class FakePhotoManager: PhotoManaging {
 
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
         albumAddRequests.append(asset)
-        completion(.success(()))
+        if albumAddResults.isEmpty {
+            completion(.success(()))
+        } else {
+            completion(albumAddResults.removeFirst())
+        }
     }
 
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
@@ -1020,6 +1168,10 @@ private struct FakeScreenProvider: ScreenProviding {
     let screens: [NSScreen]
 }
 
+private enum TestError: Error {
+    case expectedFailure
+}
+
 private extension NSScreen {
     var testPixelSize: CGSize {
         CGSize(width: frame.size.width * backingScaleFactor,
@@ -1035,6 +1187,11 @@ private extension NSScreen {
 private func makeFakeAsset() -> PHAsset {
     let object: AnyObject = NSObject()
     return unsafeBitCast(object, to: PHAsset.self)
+}
+
+private func temporaryTestDirectory() -> URL {
+    FileManager.default.temporaryDirectory
+        .appendingPathComponent("photos-wallpaper-tests-\(UUID().uuidString)", isDirectory: true)
 }
 
 private func waitForCondition(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
