@@ -652,7 +652,7 @@ struct PhotosWallpaperTests {
                                                                        localIdentifier: "7")
 
         #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08,  id: 7")
-        #expect(twoDigitDay == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
+        #expect(twoDigitDay    == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
     }
 
     @Test func photoHistoryIdentifierAcceptsWholeHistoryLine() {
