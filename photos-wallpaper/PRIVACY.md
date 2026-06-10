@@ -17,7 +17,7 @@ Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit
 
 ## Photos Wallpaper Album
 
-When you choose "Add Current Wallpaper(s) to Album", Photos Wallpaper looks up the photos it set as wallpaper during the current app session and adds them to an album named "Photos Wallpaper" in your Photos library.
+When you choose "Add Current Wallpaper(s) to Photos Wallpaper Album", Photos Wallpaper looks up the photos it set as wallpaper during the current app session and adds them to an album named "Photos Wallpaper" in your Photos library.
 
 Adding a photo to that album does not duplicate, edit, or move the photo. It only adds the existing Photos asset to the album. If you later remove a photo from that album in Photos, the original photo remains in your library unless you explicitly delete it from Photos.
 
@@ -90,7 +90,7 @@ The data flow is intentionally simple:
 1. Photos Wallpaper reads image data from your Photos library after you grant permission.
 2. It creates a local wallpaper image file for the relevant display.
 3. It asks macOS to apply that file as desktop wallpaper.
-4. If you choose "Add Current Wallpaper(s) to Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
+4. If you choose "Add Current Wallpaper(s) to Photos Wallpaper Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
 5. It writes local history and diagnostics entries as described above.
 
 That is the whole loop.

@@ -57,7 +57,7 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Add Current Wallpaper(s) to Album") {
+            Button("Add Current Wallpaper(s) to Photos Wallpaper Album") {
                 currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }
             .disabled(isAboutPanelOpen)
