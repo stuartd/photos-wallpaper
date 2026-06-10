@@ -144,11 +144,11 @@ struct CurrentWallpaperAlbumAdder {
         switch result {
         case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
             if missingIdentifierCount == 0, failedAddCount == 0 {
-                let message = albumSummary(addedCount: addedCount,
-                                           alreadyInAlbumCount: alreadyInAlbumCount,
-                                           missingIdentifierCount: missingIdentifierCount,
-                                           failedAddCount: failedAddCount)
-                showAlert(albumSuccessTitle(addedCount: addedCount, alreadyInAlbumCount: alreadyInAlbumCount), message)
+                showAlert(albumSummary(addedCount: addedCount,
+                                       alreadyInAlbumCount: alreadyInAlbumCount,
+                                       missingIdentifierCount: missingIdentifierCount,
+                                       failedAddCount: failedAddCount),
+                          "")
                 return
             }
             showAlert("Some Wallpapers Could Not Be Added",
@@ -191,13 +191,6 @@ struct CurrentWallpaperAlbumAdder {
         return parts.joined(separator: " ")
     }
 
-    private func albumSuccessTitle(addedCount: Int, alreadyInAlbumCount: Int) -> String {
-        if addedCount > 0 {
-            return alreadyInAlbumCount > 0 ? "Photos Wallpaper Album Updated" : "Added to the Photos Wallpaper album in Photos"
-        }
-        return "Already in the Photos Wallpaper album in Photos"
-    }
-
     private func albumSuccessMessage(addedCount: Int) -> String {
         switch addedCount {
         case 1:
@@ -223,7 +216,9 @@ struct CurrentWallpaperAlbumAdder {
     private static func presentAlert(title: String, message: String) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = message
+        if !message.isEmpty {
+            alert.informativeText = message
+        }
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

@@ -900,42 +900,43 @@ struct PhotosWallpaperTests {
     @Test func currentWallpaperAlbumControllerShowsSingleWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1)
 
-        #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.message == "")
     }
 
     @Test func currentWallpaperAlbumControllerShowsTwoWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2)
 
-        #expect(result.alerts.first?.message == "Added both wallpaper photos to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.title == "Added both wallpaper photos to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.message == "")
     }
 
     @Test func currentWallpaperAlbumControllerShowsThreeOrMoreWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 3)
 
-        #expect(result.alerts.first?.message == "Added all wallpaper photos to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.title == "Added all wallpaper photos to the Photos Wallpaper album.")
+        #expect(result.alerts.first?.message == "")
     }
 
     @Test func currentWallpaperAlbumControllerShowsAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
-                                                             albumAddResults: [.success(.alreadyInAlbum)],
-                                                             expectedAlertTitle: "Already in the Photos Wallpaper album in Photos")
+                                                             albumAddResults: [.success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "Already in the Photos Wallpaper album in Photos")
-        #expect(result.alerts.first?.message == "The wallpaper photo was already in the Photos Wallpaper album.")
+        #expect(result.alerts.first?.title == "The wallpaper photo was already in the Photos Wallpaper album.")
+        #expect(result.alerts.first?.message == "")
     }
 
     @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
-                                                             albumAddResults: [.success(.added), .success(.alreadyInAlbum)],
-                                                             expectedAlertTitle: "Photos Wallpaper Album Updated")
+                                                             albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "Photos Wallpaper Album Updated")
-        #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album. The wallpaper photo was already in the Photos Wallpaper album.")
+        #expect(result.alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album. The wallpaper photo was already in the Photos Wallpaper album.")
+        #expect(result.alerts.first?.message == "")
     }
 
     private func currentWallpaperAlbumConfirmation(assetCount: Int,
                                                    albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
-                                                   expectedAlertTitle: String = "Added to the Photos Wallpaper album in Photos") async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
+                                                   expectedAlertTitle: String? = nil) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
@@ -962,7 +963,9 @@ struct PhotosWallpaperTests {
         }
 
         #expect(didShowConfirmation)
-        #expect(alerts.first?.title == expectedAlertTitle)
+        if let expectedAlertTitle {
+            #expect(alerts.first?.title == expectedAlertTitle)
+        }
         #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
