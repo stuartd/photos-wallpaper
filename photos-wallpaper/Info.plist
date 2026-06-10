@@ -25,6 +25,6 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs to read your Photos library so it can select images to use as wallpaper on your displays. It does not modify your Photos library.</string>
+	<string>This app needs Photos access so it can select images for wallpaper and add current wallpaper photos to the Photos Wallpaper album when you ask it to.</string>
 </dict>
 </plist>

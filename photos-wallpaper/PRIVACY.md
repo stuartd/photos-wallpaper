@@ -1,19 +1,25 @@
 # Photos Wallpaper Privacy
 
-Photos Wallpaper is a local macOS menu bar app. It uses your Photos library only to choose images for your desktop wallpaper, and all of that work happens on your Mac.
+Photos Wallpaper is a local macOS menu bar app. It uses your Photos library to choose images for your desktop wallpaper and, when you ask it to, add current wallpaper photos to a Photos album. All of that work happens on your Mac.
 
 ## The Short Version
 
 - Your photos are not uploaded.
 - Your wallpaper history is not uploaded.
 - There are no accounts, analytics, advertising services, or server-side databases.
-- The app reads from your Photos library, asks macOS to set wallpaper, and writes a small amount of local app data.
+- The app reads from your Photos library, asks macOS to set wallpaper, can add selected wallpaper photos to a Photos album, and writes a small amount of local app data.
 
 ## Photos Access
 
-Photos Wallpaper asks macOS for permission to read your Photos library. That access is needed so the app can pick photo assets and render image data for wallpaper-sized previews.
+Photos Wallpaper asks macOS for permission to read and update your Photos library. That access is needed so the app can pick photo assets, render image data for wallpaper-sized previews, and add current wallpaper photos to the Photos Wallpaper album when you choose that menu item.
 
-The app does not modify, delete, move, tag, favorite, or otherwise change anything in your Photos library.
+Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit your photos. The only Photos library change it makes is creating the Photos Wallpaper album if needed and adding selected existing photo assets to that album when you ask it to.
+
+## Photos Wallpaper Album
+
+When you choose "Add Current Wallpaper(s) to Album", Photos Wallpaper looks up the photos it set as wallpaper during the current app session and adds them to an album named "Photos Wallpaper" in your Photos library.
+
+Adding a photo to that album does not duplicate, edit, or move the photo. It only adds the existing Photos asset to the album. If you later remove a photo from that album in Photos, the original photo remains in your library unless you explicitly delete it from Photos.
 
 ## Local Settings
 
@@ -84,6 +90,7 @@ The data flow is intentionally simple:
 1. Photos Wallpaper reads image data from your Photos library after you grant permission.
 2. It creates a local wallpaper image file for the relevant display.
 3. It asks macOS to apply that file as desktop wallpaper.
-4. It writes local history and diagnostics entries as described above.
+4. If you choose "Add Current Wallpaper(s) to Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
+5. It writes local history and diagnostics entries as described above.
 
 That is the whole loop.
