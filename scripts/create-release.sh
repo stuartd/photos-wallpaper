@@ -8,15 +8,20 @@ PROJECT="$REPO_ROOT/photos-wallpaper.xcodeproj"
 SCHEME="photos-wallpaper"
 CONFIGURATION="Release"
 APP_NAME="photos-wallpaper.app"
-DMG_NAME="photos-wallpaper.dmg"
+DMG_NAME="${2:-photos-wallpaper.dmg}"
 VOLUME_NAME="Photos Wallpaper"
 
 OUTPUT_DIR="${1:-$REPO_ROOT/releases}"
+CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
 DERIVED_DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/photos-wallpaper-release-derived-data.XXXXXX")"
 BUILD_PRODUCTS_DIR="$DERIVED_DATA_DIR/Build/Products/$CONFIGURATION"
 BUILT_APP="$BUILD_PRODUCTS_DIR/$APP_NAME"
 OUTPUT_APP="$OUTPUT_DIR/$APP_NAME"
-OUTPUT_DMG="$OUTPUT_DIR/$DMG_NAME"
+if [[ "$DMG_NAME" = /* ]]; then
+  OUTPUT_DMG="$DMG_NAME"
+else
+  OUTPUT_DMG="$OUTPUT_DIR/$DMG_NAME"
+fi
 STAGING_DIR="$OUTPUT_DIR/photos-wallpaper-dmg-staging"
 
 GIT_COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
@@ -27,6 +32,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$(dirname "$OUTPUT_DMG")"
 
 echo "Building $SCHEME ($CONFIGURATION)..."
 xcodebuild clean build \
@@ -35,6 +41,7 @@ xcodebuild clean build \
   -configuration "$CONFIGURATION" \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_DIR" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
   GIT_COMMIT="$GIT_COMMIT"
 
 if [[ ! -d "$BUILT_APP" ]]; then

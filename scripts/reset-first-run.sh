@@ -4,6 +4,7 @@ set -euo pipefail
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/photos-wallpaper"
 
 KNOWN_DOMAINS=(
+    "com.rosehillsolutions.photoswallpaper"
     "photos-wallpaper"
     "photos_wallpaper"
 )

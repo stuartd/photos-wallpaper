@@ -1,6 +1,30 @@
-#!/bin/zsh
+#!/usr/bin/env bash
+set -euo pipefail
 
-GIT_COMMIT="$(git rev-parse --short HEAD)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-xcodebuild clean build -scheme photos-wallpaper -project photos-wallpaper.xcodeproj GIT_COMMIT="$GIT_COMMIT"
-xcodebuild test -scheme photos-wallpaper -project photos-wallpaper.xcodeproj -destination 'platform=macOS' GIT_COMMIT="$GIT_COMMIT"
+PROJECT="$REPO_ROOT/photos-wallpaper.xcodeproj"
+SCHEME="photos-wallpaper"
+CONFIGURATION="${CONFIGURATION:-Debug}"
+DERIVED_DATA_DIR="${DERIVED_DATA_DIR:-$REPO_ROOT/.derivedData}"
+CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+GIT_COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+
+xcodebuild clean build \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -configuration "$CONFIGURATION" \
+  -destination 'platform=macOS' \
+  -derivedDataPath "$DERIVED_DATA_DIR" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+  GIT_COMMIT="$GIT_COMMIT"
+
+xcodebuild test \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -configuration "$CONFIGURATION" \
+  -destination 'platform=macOS' \
+  -derivedDataPath "$DERIVED_DATA_DIR" \
+  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+  GIT_COMMIT="$GIT_COMMIT"

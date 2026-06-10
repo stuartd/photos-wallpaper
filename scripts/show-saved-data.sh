@@ -4,6 +4,7 @@ set -euo pipefail
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/photos-wallpaper"
 
 KNOWN_DOMAINS=(
+    "com.rosehillsolutions.photoswallpaper"
     "photos-wallpaper"
     "photos_wallpaper"
 )
@@ -23,11 +24,9 @@ done < <(
         grep -Ei 'photos[-_.]?wallpaper' || true
 )
 
-FOUND_DEFAULTS=0
 printf '%s\n' "${DOMAINS[@]}" | sort -u | while read -r domain; do
     [[ -z "${domain}" ]] && continue
     if defaults read "${domain}" >/dev/null 2>&1; then
-        FOUND_DEFAULTS=1
         echo
         echo "[${domain}]"
         defaults read "${domain}" || true
