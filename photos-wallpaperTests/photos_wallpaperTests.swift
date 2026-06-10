@@ -789,36 +789,54 @@ struct PhotosWallpaperTests {
         }
     }
 
-    @Test func currentWallpaperAlbumControllerNotifiesAfterAddingCurrentWallpapers() async {
+    @Test func currentWallpaperAlbumControllerShowsSingleWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 1)
+
+        #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album.")
+    }
+
+    @Test func currentWallpaperAlbumControllerShowsTwoWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 2)
+
+        #expect(result.alerts.first?.message == "Added both wallpaper photos to the Photos Wallpaper album.")
+    }
+
+    @Test func currentWallpaperAlbumControllerShowsThreeOrMoreWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 3)
+
+        #expect(result.alerts.first?.message == "Added all wallpaper photos to the Photos Wallpaper album.")
+    }
+
+    private func currentWallpaperAlbumConfirmation(assetCount: Int) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
-        let firstAsset = makeFakeAsset()
-        let secondAsset = makeFakeAsset()
-        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
-        let notifier = FakeWallpaperCycleNotifier()
+        let assets = (0..<assetCount).map { _ in makeFakeAsset() }
+        let photoManager = FakePhotoManager(assetsToReturn: assets)
+        var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(historyLogger: logger,
-                                                        photoManager: photoManager,
-                                                        notifier: notifier)
+                                                        photoManager: photoManager) { title, message in
+            alerts.append((title, message))
+        }
         let timestamp = Date(timeIntervalSince1970: 0)
-        logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
-                                      screenName: "Screen 1",
-                                      screenCount: 2,
-                                      timestamp: timestamp)
-        logger.recordWallpaperChange(photoName: "IMG_0002.HEIC created 2 Jan 2024 at 12:00:00, id: SECOND-ID/L0/001",
-                                      screenName: "Screen 2",
-                                      screenCount: 2,
-                                      timestamp: timestamp)
-
-        controller.addCurrentWallpapersToAlbum()
-        let didNotify = await waitForCondition {
-            notifier.currentWallpapersAddedCounts == [2]
+        for index in 1...assetCount {
+            logger.recordWallpaperChange(photoName: "IMG_000\(index).HEIC created 1 Jan 2024 at 12:00:00, id: ID-\(index)/L0/001",
+                                          screenName: "Screen \(index)",
+                                          screenCount: assetCount,
+                                          timestamp: timestamp)
         }
 
-        #expect(didNotify)
-        #expect(photoManager.batchLookupRequests == [["FIRST-ID/L0/001", "SECOND-ID/L0/001"]])
-        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
+        controller.addCurrentWallpapersToAlbum()
+        let didShowConfirmation = await waitForCondition {
+            alerts.first?.title == "Added to Photos Wallpaper"
+        }
+
+        #expect(didShowConfirmation)
+        #expect(alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
+        return (alerts, photoManager)
     }
 
 }
@@ -1080,7 +1098,6 @@ private final class FakeWakeEventObserver: WakeEventObserving {
 private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
     private(set) var noPhotosNotificationCount = 0
     private(set) var photoLibraryPermissionDeniedNotificationCount = 0
-    private(set) var currentWallpapersAddedCounts: [Int] = []
 
     func notifyNoPhotosAvailable() {
         noPhotosNotificationCount += 1
@@ -1088,10 +1105,6 @@ private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
 
     func notifyPhotoLibraryPermissionDenied() {
         photoLibraryPermissionDeniedNotificationCount += 1
-    }
-
-    func notifyCurrentWallpapersAddedToAlbum(count: Int, fallback: @escaping () -> Void) {
-        currentWallpapersAddedCounts.append(count)
     }
 }
 

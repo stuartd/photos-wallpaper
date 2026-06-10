@@ -96,14 +96,14 @@ struct CurrentWallpaperAlbumAdder {
 final class CurrentWallpaperAlbumController {
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
-    private let notifier: WallpaperCycleNotifying
+    private let showAlert: (String, String) -> Void
 
     init(historyLogger: WallpaperHistoryLogger,
          photoManager: PhotoManaging = PhotoManager.shared,
-         notifier: WallpaperCycleNotifying = UserNotificationWallpaperCycleNotifier()) {
+         showAlert: @escaping (String, String) -> Void = CurrentWallpaperAlbumController.presentAlert) {
         self.historyLogger = historyLogger
         self.photoManager = photoManager
-        self.notifier = notifier
+        self.showAlert = showAlert
     }
 
     func addCurrentWallpapersToAlbum() {
@@ -122,34 +122,31 @@ final class CurrentWallpaperAlbumController {
                 let message = albumSummary(addedCount: addedCount,
                                            missingIdentifierCount: missingIdentifierCount,
                                            failedAddCount: failedAddCount)
-                notifier.notifyCurrentWallpapersAddedToAlbum(count: addedCount) { [weak self] in
-                    self?.showAlert(title: "Added to Photos Wallpaper",
-                                    message: message)
-                }
+                showAlert("Added to Photos Wallpaper", message)
                 return
             }
-            showAlert(title: "Some Wallpapers Could Not Be Added",
-                      message: albumSummary(addedCount: addedCount,
-                                            missingIdentifierCount: missingIdentifierCount,
-                                            failedAddCount: failedAddCount))
+            showAlert("Some Wallpapers Could Not Be Added",
+                      albumSummary(addedCount: addedCount,
+                                   missingIdentifierCount: missingIdentifierCount,
+                                   failedAddCount: failedAddCount))
         case .noRememberedWallpapers:
-            showAlert(title: "No Current Wallpapers Yet",
-                      message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
+            showAlert("No Current Wallpapers Yet",
+                      "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
         case .waitingForAuthorization:
-            showAlert(title: "Photos Access Needed",
-                      message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
+            showAlert("Photos Access Needed",
+                      "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
         case .permissionDenied:
-            showAlert(title: "Photos Access Needed",
-                      message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
+            showAlert("Photos Access Needed",
+                      "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
         case .unavailable:
-            showAlert(title: "Photos Unavailable",
-                      message: "Photos Wallpaper could not search your Photos library right now.")
+            showAlert("Photos Unavailable",
+                      "Photos Wallpaper could not search your Photos library right now.")
         }
     }
 
     private func albumSummary(addedCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
         var parts: [String] = []
-        parts.append("Added \(addedCount) wallpaper photo\(addedCount == 1 ? "" : "s") to the Photos Wallpaper album.")
+        parts.append(albumSuccessMessage(addedCount: addedCount))
         if missingIdentifierCount > 0 {
             parts.append("\(missingIdentifierCount) remembered wallpaper photo\(missingIdentifierCount == 1 ? "" : "s") could not be found in Photos.")
         }
@@ -159,7 +156,18 @@ final class CurrentWallpaperAlbumController {
         return parts.joined(separator: " ")
     }
 
-    private func showAlert(title: String, message: String) {
+    private func albumSuccessMessage(addedCount: Int) -> String {
+        switch addedCount {
+        case 1:
+            return "Added the wallpaper photo to the Photos Wallpaper album."
+        case 2:
+            return "Added both wallpaper photos to the Photos Wallpaper album."
+        default:
+            return "Added all wallpaper photos to the Photos Wallpaper album."
+        }
+    }
+
+    private static func presentAlert(title: String, message: String) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
