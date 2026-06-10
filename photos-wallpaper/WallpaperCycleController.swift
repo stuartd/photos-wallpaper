@@ -15,6 +15,7 @@ protocol WallpaperCycleControlling: AnyObject, ObservableObject {
 protocol WallpaperCycleNotifying {
     func notifyNoPhotosAvailable()
     func notifyPhotoLibraryPermissionDenied()
+    func notifyCurrentWallpapersAddedToAlbum(count: Int)
 }
 
 /// Production notifier used when the app needs to explain why wallpaper selection failed.
@@ -39,6 +40,12 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
         queueNotification(identifier: "photo-library-permission-denied-\(UUID().uuidString)",
                           title: "Photos Access Needed",
                           body: "Photos Wallpaper can't set your wallpaper because it does not have permission to read your photo library. Enable access in System Settings > Privacy & Security > Photos.")
+    }
+
+    func notifyCurrentWallpapersAddedToAlbum(count: Int) {
+        queueNotification(identifier: "current-wallpapers-added-to-album-\(UUID().uuidString)",
+                          title: "Added to Photos Wallpaper",
+                          body: "Added \(count) current wallpaper photo\(count == 1 ? "" : "s") to the Photos Wallpaper album.")
     }
 
     private func queueNotification(identifier: String, title: String, body: String) {

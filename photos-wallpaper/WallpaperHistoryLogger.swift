@@ -9,6 +9,10 @@ protocol WallpaperHistoryLogging {
 struct PhotoHistoryAssetDescriptionFormatter {
     private init() {}
 
+    private static let localIdentifierRegex = try! NSRegularExpression(
+        pattern: #"(?:^|,\s*)id:\s*(\S+)\s*$"#
+    )
+
     static func string(filename: String, creationDate: Date?, localIdentifier: String, dateFormatter: DateFormatter) -> String {
         string(filename: filename,
                creationDateText: creationDate.map { dateFormatter.string(from: $0) },
@@ -21,6 +25,23 @@ struct PhotoHistoryAssetDescriptionFormatter {
             return "\(filename) created \(creationDateText), \(identifierText)"
         }
         return "\(filename), \(identifierText)"
+    }
+
+    static func localIdentifier(in photoDescription: String) -> String? {
+        let matchRange = NSRange(photoDescription.startIndex..., in: photoDescription)
+        if let match = localIdentifierRegex.firstMatch(in: photoDescription, range: matchRange),
+           let identifierRange = Range(match.range(at: 1), in: photoDescription) {
+            return normalizedIdentifier(String(photoDescription[identifierRange]))
+        }
+
+        return normalizedIdentifier(photoDescription)
+    }
+
+    private static func normalizedIdentifier(_ identifier: String) -> String? {
+        let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdentifier.isEmpty else { return nil }
+        guard trimmedIdentifier.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return nil }
+        return trimmedIdentifier
     }
 }
 
@@ -192,6 +213,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let logURL: URL
     private let logFile: BoundedLogFile
     private let dateFormatter: DateFormatter
+    private var currentWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
     private var historyWindow: NSWindow?
     private weak var historyTextView: NSTextView?
@@ -217,6 +239,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
         let historyText = writeQueue.sync {
             writeWallpaperChange(photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp)
+            rememberCurrentWallpaper(photoName: photoName, screenName: screenName, screenCount: screenCount)
             return try? String(contentsOf: logURL, encoding: .utf8)
         }
 
@@ -225,6 +248,53 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
                 self.updateOpenHistoryWindow(with: historyText)
             }
         }
+    }
+
+    func currentWallpaperIdentifiersSnapshot() -> [String] {
+        writeQueue.sync {
+            var seenIdentifiers = Set<String>()
+            var identifiers: [String] = []
+            for screenName in currentWallpaperIdentifiersByScreen.keys.sorted(by: screenSortOrder) {
+                guard let identifier = currentWallpaperIdentifiersByScreen[screenName],
+                      !seenIdentifiers.contains(identifier) else { continue }
+                identifiers.append(identifier)
+                seenIdentifiers.insert(identifier)
+            }
+            return identifiers
+        }
+    }
+
+    private func rememberCurrentWallpaper(photoName: String, screenName: String, screenCount: Int) {
+        guard let identifier = PhotoHistoryAssetDescriptionFormatter.localIdentifier(in: photoName) else {
+            debugLog("WallpaperHistoryLogger: could not remember current wallpaper identifier for \(screenName).")
+            return
+        }
+
+        currentWallpaperIdentifiersByScreen = currentWallpaperIdentifiersByScreen.filter { screenName, _ in
+            guard let screenNumber = Self.screenNumber(in: screenName) else { return true }
+            return screenNumber <= screenCount
+        }
+        currentWallpaperIdentifiersByScreen[screenName] = identifier
+    }
+
+    private func screenSortOrder(_ lhs: String, _ rhs: String) -> Bool {
+        switch (Self.screenNumber(in: lhs), Self.screenNumber(in: rhs)) {
+        case let (left?, right?):
+            return left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return lhs < rhs
+        }
+    }
+
+    private static func screenNumber(in screenName: String) -> Int? {
+        screenName
+            .components(separatedBy: CharacterSet.decimalDigits.inverted)
+            .compactMap(Int.init)
+            .first
     }
 
     private func writeWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {

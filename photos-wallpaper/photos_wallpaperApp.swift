@@ -28,10 +28,12 @@ struct photos_wallpaperApp: App {
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
     private let photoHistoryLookupWindowController = PhotoHistoryLookupWindowController()
+    private let currentWallpaperAlbumController: CurrentWallpaperAlbumController
 
     init() {
         let historyLogger = WallpaperHistoryLogger()
         self.historyLogger = historyLogger
+        self.currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
     }
 
@@ -56,18 +58,23 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Show Wallpaper History") {
-                historyLogger.openHistoryLog()
+            Button("Add Current Wallpaper(s) to Album") {
+                currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Find Photos from Wallpaper History...") {
-                photoHistoryLookupWindowController.showLookup()
-            }
-            .disabled(isAboutPanelOpen)
+            Menu("Logs") {
+                Button("Show Wallpaper History") {
+                    historyLogger.openHistoryLog()
+                }
 
-            Button("Show Diagnostic Log") {
-                runtimeLogger.openRuntimeLog()
+                Button("Find Photos from Wallpaper History...") {
+                    photoHistoryLookupWindowController.showLookup()
+                }
+
+                Button("Show Diagnostic Log") {
+                    runtimeLogger.openRuntimeLog()
+                }
             }
             .disabled(isAboutPanelOpen)
 

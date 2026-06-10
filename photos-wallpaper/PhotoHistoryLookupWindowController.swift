@@ -7,6 +7,9 @@ enum PhotoHistoryIdentifier {
     static let maxPasteCharacterCount = 20_000
     static let maxIdentifierCount = 25
     static let exampleHistoryLine = WallpaperHistoryEntryFormatter.exampleLine
+    private static let currentHistoryLineRegex = try! NSRegularExpression(
+        pattern: #"^\s*Photo ID\s+(\S+)\s+was set as the wallpaper\b"#
+    )
 
     struct ExtractionResult: Equatable {
         let identifiers: [String]
@@ -45,14 +48,10 @@ enum PhotoHistoryIdentifier {
     }
 
     private static func identifier(in line: String) -> String? {
-        return identifierInCurrentHistoryLine(line)
-    }
-
-    private static func identifierInCurrentHistoryLine(_ line: String) -> String? {
-        guard let markerRange = line.range(of: "Photo ID ") else { return nil }
-        let remainder = line[markerRange.upperBound...]
-        guard let delimiterRange = remainder.range(of: " was set as the wallpaper") else { return nil }
-        return normalizedIdentifier(String(remainder[..<delimiterRange.lowerBound]))
+        let matchRange = NSRange(line.startIndex..., in: line)
+        guard let match = currentHistoryLineRegex.firstMatch(in: line, range: matchRange),
+              let identifierRange = Range(match.range(at: 1), in: line) else { return nil }
+        return normalizedIdentifier(String(line[identifierRange]))
     }
 
     private static func normalizedIdentifier(_ identifier: String) -> String? {
@@ -65,6 +64,167 @@ enum PhotoHistoryIdentifier {
         guard trimmedIdentifier.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return nil }
         guard trimmedIdentifier.contains("/") else { return nil }
         return trimmedIdentifier
+    }
+}
+
+enum CurrentWallpaperAlbumAdditionResult: Equatable {
+    case added(addedCount: Int, missingIdentifierCount: Int, failedAddCount: Int)
+    case noRememberedWallpapers
+    case waitingForAuthorization
+    case permissionDenied
+    case unavailable
+}
+
+struct CurrentWallpaperAlbumAdder {
+    let photoManager: PhotoManaging
+
+    func addWallpapers(withLocalIdentifiers identifiers: [String],
+                       completion: @escaping (CurrentWallpaperAlbumAdditionResult) -> Void) {
+        let identifiers = deduplicatedIdentifiers(identifiers)
+        guard !identifiers.isEmpty else {
+            completion(.noRememberedWallpapers)
+            return
+        }
+
+        switch photoManager.findPhotos(localIdentifiers: identifiers) {
+        case .photos(let assets, let missingIdentifierCount):
+            addAssetsToAlbum(assets,
+                             missingIdentifierCount: missingIdentifierCount,
+                             completion: completion)
+        case .waitingForAuthorization:
+            completion(.waitingForAuthorization)
+        case .permissionDenied:
+            completion(.permissionDenied)
+        case .unavailable:
+            completion(.unavailable)
+        }
+    }
+
+    private func deduplicatedIdentifiers(_ identifiers: [String]) -> [String] {
+        var seenIdentifiers = Set<String>()
+        var deduplicatedIdentifiers: [String] = []
+        for identifier in identifiers {
+            let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedIdentifier.isEmpty, !seenIdentifiers.contains(trimmedIdentifier) else { continue }
+            deduplicatedIdentifiers.append(trimmedIdentifier)
+            seenIdentifiers.insert(trimmedIdentifier)
+        }
+        return deduplicatedIdentifiers
+    }
+
+    private func addAssetsToAlbum(_ assets: [PHAsset],
+                                  missingIdentifierCount: Int,
+                                  completion: @escaping (CurrentWallpaperAlbumAdditionResult) -> Void) {
+        guard !assets.isEmpty else {
+            completion(.added(addedCount: 0,
+                              missingIdentifierCount: missingIdentifierCount,
+                              failedAddCount: 0))
+            return
+        }
+
+        addAssetToAlbum(assets,
+                        index: 0,
+                        missingIdentifierCount: missingIdentifierCount,
+                        failedAddCount: 0,
+                        completion: completion)
+    }
+
+    private func addAssetToAlbum(_ assets: [PHAsset],
+                                 index: Int,
+                                 missingIdentifierCount: Int,
+                                 failedAddCount: Int,
+                                 completion: @escaping (CurrentWallpaperAlbumAdditionResult) -> Void) {
+        guard index < assets.count else {
+            completion(.added(addedCount: assets.count - failedAddCount,
+                              missingIdentifierCount: missingIdentifierCount,
+                              failedAddCount: failedAddCount))
+            return
+        }
+
+        photoManager.addToPhotosWallpaperAlbum(asset: assets[index]) { result in
+            let nextFailedAddCount: Int
+            switch result {
+            case .success:
+                nextFailedAddCount = failedAddCount
+            case .failure(let error):
+                debugLog("CurrentWallpaperAlbumAdder: failed to add current wallpaper \(index + 1) to album: \(error)")
+                nextFailedAddCount = failedAddCount + 1
+            }
+            addAssetToAlbum(assets,
+                            index: index + 1,
+                            missingIdentifierCount: missingIdentifierCount,
+                            failedAddCount: nextFailedAddCount,
+                            completion: completion)
+        }
+    }
+}
+
+final class CurrentWallpaperAlbumController {
+    private let historyLogger: WallpaperHistoryLogger
+    private let photoManager: PhotoManaging
+    private let notifier: WallpaperCycleNotifying
+
+    init(historyLogger: WallpaperHistoryLogger,
+         photoManager: PhotoManaging = PhotoManager.shared,
+         notifier: WallpaperCycleNotifying = UserNotificationWallpaperCycleNotifier()) {
+        self.historyLogger = historyLogger
+        self.photoManager = photoManager
+        self.notifier = notifier
+    }
+
+    func addCurrentWallpapersToAlbum() {
+        let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
+        CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.handle(result)
+            }
+        }
+    }
+
+    private func handle(_ result: CurrentWallpaperAlbumAdditionResult) {
+        switch result {
+        case .added(let addedCount, let missingIdentifierCount, let failedAddCount):
+            if addedCount > 0, missingIdentifierCount == 0, failedAddCount == 0 {
+                notifier.notifyCurrentWallpapersAddedToAlbum(count: addedCount)
+                return
+            }
+            showAlert(title: "Some Wallpapers Could Not Be Added",
+                      message: albumSummary(addedCount: addedCount,
+                                            missingIdentifierCount: missingIdentifierCount,
+                                            failedAddCount: failedAddCount))
+        case .noRememberedWallpapers:
+            showAlert(title: "No Current Wallpapers Yet",
+                      message: "Photos Wallpaper can add current wallpapers after it has set them at least once.")
+        case .waitingForAuthorization:
+            showAlert(title: "Photos Access Needed",
+                      message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
+        case .permissionDenied:
+            showAlert(title: "Photos Access Needed",
+                      message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
+        case .unavailable:
+            showAlert(title: "Photos Unavailable",
+                      message: "Photos Wallpaper could not search your Photos library right now.")
+        }
+    }
+
+    private func albumSummary(addedCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
+        var parts: [String] = []
+        parts.append("Added \(addedCount) wallpaper photo\(addedCount == 1 ? "" : "s") to the Photos Wallpaper album.")
+        if missingIdentifierCount > 0 {
+            parts.append("\(missingIdentifierCount) remembered wallpaper photo\(missingIdentifierCount == 1 ? "" : "s") could not be found in Photos.")
+        }
+        if failedAddCount > 0 {
+            parts.append("\(failedAddCount) wallpaper photo\(failedAddCount == 1 ? "" : "s") could not be added.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
