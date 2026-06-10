@@ -598,6 +598,7 @@ struct PhotosWallpaperTests {
         #expect(historyLogger.entries[0].photoName.contains("created"))
         #expect(historyLogger.entries[0].photoName.contains("id:"))
         #expect(historyLogger.entries[0].screenName == "Screen 1")
+        #expect(historyLogger.entries[0].screenCount == 1)
     }
 
     @Test func boundedLogFileCreatesMissingFileAndAppendsText() throws {
@@ -630,20 +631,34 @@ struct PhotosWallpaperTests {
         #expect(PhotoHistoryIdentifier.extract(from: " 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 ") == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
     }
 
-    @Test func wallpaperHistoryEntryFormatterBuildsExpectedLine() {
-        let photoDescription = PhotoHistoryAssetDescriptionFormatter.string(filename: "IMG_6790.HEIC",
-                                                                            creationDateText: "Jan 1, 2026 at 12:00:00 AM",
-                                                                            localIdentifier: "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+    @Test func wallpaperHistoryEntryFormatterBuildsExpectedMultipleScreenLine() {
+        let photoDescription = PhotoHistoryAssetDescriptionFormatter.string(filename: "IMG_4501.JPG",
+                                                                            creationDateText: "22 Dec 2015 at 11:58:17",
+                                                                            localIdentifier: "A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001")
 
         let line = WallpaperHistoryEntryFormatter.line(photoDescription: photoDescription,
                                                        screenName: "Screen 1",
-                                                       shownAtText: "January 1, 2026 at 12:00:00 AM")
+                                                       screenCount: 2,
+                                                       shownAtText: "10 June 2026 at 13:16:18")
 
-        #expect(line == "IMG_6790.HEIC created Jan 1, 2026 at 12:00:00 AM,  id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was shown on Screen 1 on January 1, 2026 at 12:00:00 AM")
+        #expect(line == "Photo ID A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001 was set as the wallpaper for screen 1 on 10 June 2026 at 13:16:18 (IMG_4501.JPG created 22 Dec 2015 at 11:58:17)")
+    }
+
+    @Test func wallpaperHistoryEntryFormatterBuildsExpectedSingleScreenLine() {
+        let photoDescription = PhotoHistoryAssetDescriptionFormatter.string(filename: "IMG_4501.JPG",
+                                                                            creationDateText: "22 Dec 2015 at 11:58:17",
+                                                                            localIdentifier: "A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001")
+
+        let line = WallpaperHistoryEntryFormatter.line(photoDescription: photoDescription,
+                                                       screenName: "Screen 1",
+                                                       screenCount: 1,
+                                                       shownAtText: "10 June 2026 at 13:16:18")
+
+        #expect(line == "Photo ID A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_4501.JPG created 22 Dec 2015 at 11:58:17)")
         #expect(PhotoHistoryIdentifier.exampleHistoryLine == line)
     }
 
-    @Test func photoHistoryAssetDescriptionFormatterPadsSingleDigitCreationDays() {
+    @Test func photoHistoryAssetDescriptionFormatterIncludesFilenameCreationDateAndIdentifier() {
         let singleDigitDay = PhotoHistoryAssetDescriptionFormatter.string(filename: "DSCN2550.jpg",
                                                                           creationDateText: "1 May 2004 at 14:42:08",
                                                                           localIdentifier: "7")
@@ -651,27 +666,26 @@ struct PhotosWallpaperTests {
                                                                        creationDateText: "11 May 2004 at 14:42:08",
                                                                        localIdentifier: "7")
 
+<<<<<<< HEAD
         #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08,  id: 7")
         #expect(twoDigitDay    == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
+=======
+        #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08, id: 7")
+        #expect(twoDigitDay == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
+>>>>>>> b2d2872 (Reworked hostory log format for usability - #16)
     }
 
     @Test func photoHistoryIdentifierAcceptsWholeHistoryLine() {
-        let line = "IMG_6790.HEIC created Jan 1, 2024 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was shown on Screen 1"
-
-        #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
-    }
-
-    @Test func photoHistoryIdentifierAcceptsOlderParenthesizedHistoryLine() {
-        let line = "IMG_6790.HEIC (created Jan 1, 2024 at 12:00:00 AM, id: 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001) was shown on Screen 1"
+        let line = "Photo ID 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was set as the wallpaper for screen 1 on 10 June 2026 at 13:16:18 (IMG_6790.HEIC created Jan 1, 2024 at 12:00:00 AM)"
 
         #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
     }
 
     @Test func photoHistoryIdentifierExtractsMultipleHistoryLines() {
         let text = """
-        IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001 was shown on Screen 1
-        IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM, id: SECOND-ID/L0/001 was shown on Screen 1
-        IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001 was shown on Screen 1
+        Photo ID FIRST-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
+        Photo ID SECOND-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:17:18 (IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM)
+        Photo ID THIRD-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:18:18 (IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM)
         """
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
@@ -683,9 +697,9 @@ struct PhotosWallpaperTests {
 
     @Test func photoHistoryIdentifierDeduplicatesIdentifiers() {
         let text = """
-        IMG_0001.HEIC (id: SAME-ID/L0/001) was shown on Screen 1
-        IMG_0001.HEIC (id: SAME-ID/L0/001) was shown on Screen 1
-        IMG_0002.HEIC (id: OTHER-ID/L0/001) was shown on Screen 1
+        Photo ID SAME-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
+        Photo ID SAME-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:17:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
+        Photo ID OTHER-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:18:18 (IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM)
         """
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
@@ -706,9 +720,9 @@ struct PhotosWallpaperTests {
 
     @Test func photoHistoryIdentifierAcceptsMixedHistoryLinesAndRawIdentifierLines() {
         let text = """
-        IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM, id: FIRST-ID/L0/001 was shown on Screen 1
+        Photo ID FIRST-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
         SECOND-ID/L0/001
-        IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM, id: THIRD-ID/L0/001 was shown on Screen 1
+        Photo ID THIRD-ID/L0/001 was set as the wallpaper for screen 2 on 10 June 2026 at 13:18:18 (IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM)
         """
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
@@ -727,7 +741,7 @@ struct PhotosWallpaperTests {
 
     @Test func photoHistoryIdentifierStopsAtIdentifierLimit() {
         let text = (1...5)
-            .map { "IMG_\($0).HEIC (id: ID-\($0)/L0/001) was shown on Screen 1" }
+            .map { "Photo ID ID-\($0)/L0/001 was set as the wallpaper on 10 June 2026 at 13:1\($0):18 (IMG_\($0).HEIC created Jan \($0), 2024 at 12:00:00 AM)" }
             .joined(separator: "\n")
 
         let result = PhotoHistoryIdentifier.extractIdentifiers(from: text, maxIdentifierCount: 3)
@@ -1126,10 +1140,10 @@ private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
 
 private final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
     private let lock = NSLock()
-    private var recordedEntries: [(photoName: String, screenName: String, timestamp: Date)] = []
+    private var recordedEntries: [(photoName: String, screenName: String, screenCount: Int, timestamp: Date)] = []
     private var recordedOpenCallCount = 0
 
-    var entries: [(photoName: String, screenName: String, timestamp: Date)] {
+    var entries: [(photoName: String, screenName: String, screenCount: Int, timestamp: Date)] {
         lock.lock()
         defer { lock.unlock() }
         return recordedEntries
@@ -1141,9 +1155,9 @@ private final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
         return recordedOpenCallCount
     }
 
-    func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
+    func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
         lock.lock()
-        recordedEntries.append((photoName: photoName, screenName: screenName, timestamp: timestamp))
+        recordedEntries.append((photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp))
         lock.unlock()
     }
 

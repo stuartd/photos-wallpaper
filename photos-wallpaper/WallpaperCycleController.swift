@@ -441,6 +441,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         // `zip` pairs screens with assets 1:1. The request itself is async, so each screen continues
         // independently after this loop starts the image fetches.
         let screenAssetPairs = Array(zip(screens, assets).enumerated())
+        let screenCount = screenAssetPairs.count
         pendingImageRequests = screenAssetPairs.count
         for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
@@ -463,6 +464,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                             let photoName = photoManager.displayName(for: asset)
                             historyLogger.recordWallpaperChange(photoName: photoName,
                                                                 screenName: screenName,
+                                                                screenCount: screenCount,
                                                                 timestamp: Date())
                         }
                     }

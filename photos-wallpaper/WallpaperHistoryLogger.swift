@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 protocol WallpaperHistoryLogging {
-    func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date)
+    func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date)
     func openHistoryLog()
 }
 
@@ -12,55 +12,53 @@ struct PhotoHistoryAssetDescriptionFormatter {
     static func string(filename: String, creationDate: Date?, localIdentifier: String, dateFormatter: DateFormatter) -> String {
         string(filename: filename,
                creationDateText: creationDate.map { dateFormatter.string(from: $0) },
-               localIdentifier: localIdentifier,
-               creationDay: creationDate.map { Calendar.current.component(.day, from: $0) })
+               localIdentifier: localIdentifier)
     }
 
     static func string(filename: String, creationDateText: String?, localIdentifier: String) -> String {
-        string(filename: filename,
-               creationDateText: creationDateText,
-               localIdentifier: localIdentifier,
-               creationDay: dayNumber(in: creationDateText))
-    }
-
-    private static func string(filename: String, creationDateText: String?, localIdentifier: String, creationDay: Int?) -> String {
         let identifierText = "id: \(localIdentifier)"
         if let creationDateText {
-            return "\(filename) created \(creationDateText)\(identifierSeparator(forCreationDay: creationDay))\(identifierText)"
+            return "\(filename) created \(creationDateText), \(identifierText)"
         }
         return "\(filename), \(identifierText)"
-    }
-
-    private static func identifierSeparator(forCreationDay day: Int?) -> String {
-        guard let day, (1...9).contains(day) else { return ", " }
-        return ",  "
-    }
-
-    private static func dayNumber(in dateText: String?) -> Int? {
-        dateText?
-            .components(separatedBy: CharacterSet.decimalDigits.inverted)
-            .compactMap(Int.init)
-            .first { (1...31).contains($0) }
     }
 }
 
 struct WallpaperHistoryEntryFormatter {
     private init() {}
 
-    static let exampleLine = line(photoDescription: PhotoHistoryAssetDescriptionFormatter.string(
-        filename: "IMG_6790.HEIC",
-        creationDateText: "Jan 1, 2026 at 12:00:00 AM",
-        localIdentifier: "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001"
-    ), screenName: "Screen 1", shownAtText: "January 1, 2026 at 12:00:00 AM")
+    private static let identifierMarker = "id:"
 
-    static func line(photoDescription: String, screenName: String, timestamp: Date, dateFormatter: DateFormatter) -> String {
+    static let exampleLine = line(photoDescription: PhotoHistoryAssetDescriptionFormatter.string(
+        filename: "IMG_4501.JPG",
+        creationDateText: "22 Dec 2015 at 11:58:17",
+        localIdentifier: "A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001"
+    ), screenName: "Screen 1", screenCount: 1, shownAtText: "10 June 2026 at 13:16:18")
+
+    static func line(photoDescription: String, screenName: String, screenCount: Int, timestamp: Date, dateFormatter: DateFormatter) -> String {
         line(photoDescription: photoDescription,
              screenName: screenName,
+             screenCount: screenCount,
              shownAtText: dateFormatter.string(from: timestamp))
     }
 
-    static func line(photoDescription: String, screenName: String, shownAtText: String) -> String {
-        "\(photoDescription) was shown on \(screenName) on \(shownAtText)"
+    static func line(photoDescription: String, screenName: String, screenCount: Int, shownAtText: String) -> String {
+        let components = photoComponents(from: photoDescription)
+        let screenText = screenCount > 1 ? " for \(screenName.lowercased())" : ""
+        let detailsText = components.details.map { " (\($0))" } ?? ""
+        return "Photo ID \(components.identifier) was set as the wallpaper\(screenText) on \(shownAtText)\(detailsText)"
+    }
+
+    private static func photoComponents(from photoDescription: String) -> (identifier: String, details: String?) {
+        guard let markerRange = photoDescription.range(of: identifierMarker) else {
+            return (identifier: photoDescription, details: nil)
+        }
+
+        let identifier = photoDescription[markerRange.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let details = photoDescription[..<markerRange.lowerBound]
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",")))
+        return (identifier: identifier, details: details.isEmpty ? nil : details)
     }
 }
 
@@ -211,14 +209,14 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
 
         let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .medium
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss"
         self.dateFormatter = formatter
     }
 
-    func recordWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
+    func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
         let historyText = writeQueue.sync {
-            writeWallpaperChange(photoName: photoName, screenName: screenName, timestamp: timestamp)
+            writeWallpaperChange(photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp)
             return try? String(contentsOf: logURL, encoding: .utf8)
         }
 
@@ -229,10 +227,11 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 
-    private func writeWallpaperChange(photoName: String, screenName: String, timestamp: Date) {
+    private func writeWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
         do {
             let line = WallpaperHistoryEntryFormatter.line(photoDescription: photoName,
                                                            screenName: screenName,
+                                                           screenCount: screenCount,
                                                            timestamp: timestamp,
                                                            dateFormatter: dateFormatter) + "\n"
             try logFile.append(line)

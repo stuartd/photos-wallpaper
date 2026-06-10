@@ -45,17 +45,14 @@ enum PhotoHistoryIdentifier {
     }
 
     private static func identifier(in line: String) -> String? {
-        guard let markerRange = line.range(of: "id:") else { return nil }
-        let identifierStart = markerRange.upperBound
-        let remainder = line[identifierStart...].trimmingCharacters(in: .whitespacesAndNewlines)
-        let delimiterRanges = [
-            remainder.range(of: ")"),
-            remainder.range(of: " was shown on ")
-        ].compactMap { $0 }
-        if let delimiterRange = delimiterRanges.min(by: { $0.lowerBound < $1.lowerBound }) {
-            return normalizedIdentifier(String(remainder[..<delimiterRange.lowerBound]))
-        }
-        return normalizedIdentifier(remainder)
+        return identifierInCurrentHistoryLine(line)
+    }
+
+    private static func identifierInCurrentHistoryLine(_ line: String) -> String? {
+        guard let markerRange = line.range(of: "Photo ID ") else { return nil }
+        let remainder = line[markerRange.upperBound...]
+        guard let delimiterRange = remainder.range(of: " was set as the wallpaper") else { return nil }
+        return normalizedIdentifier(String(remainder[..<delimiterRange.lowerBound]))
     }
 
     private static func normalizedIdentifier(_ identifier: String) -> String? {

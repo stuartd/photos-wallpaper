@@ -463,8 +463,8 @@ final class PhotoManager: PhotoManaging {
 
     private static let historyAssetDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .medium
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "d MMM yyyy 'at' HH:mm:ss"
         return formatter
     }()
 }
