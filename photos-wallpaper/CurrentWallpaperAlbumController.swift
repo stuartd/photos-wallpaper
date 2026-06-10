@@ -133,8 +133,9 @@ struct CurrentWallpaperAlbumAdder {
     func addCurrentWallpapersToAlbum() {
         let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
         CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
+            guard let self else { return }
             Task { @MainActor in
-                self?.handle(result)
+                self.handle(result)
             }
         }
     }

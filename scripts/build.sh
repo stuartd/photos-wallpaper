@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-PROJECT="$REPO_ROOT/photos-wallpaper.xcodeproj"
-SCHEME="photos-wallpaper"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 DERIVED_DATA_DIR="${DERIVED_DATA_DIR:-$REPO_ROOT/.derivedData}"
 CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
-GIT_COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+GIT_COMMIT="$(git_commit)"
 
 xcodebuild clean build \
   -project "$PROJECT" \

@@ -1,30 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_SUPPORT_DIR="${HOME}/Library/Application Support/photos-wallpaper"
-
-KNOWN_DOMAINS=(
-    "com.rosehillsolutions.photoswallpaper"
-    "photos-wallpaper"
-    "photos_wallpaper"
-)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 echo "Photos Wallpaper saved data"
 
 echo
 echo "Defaults domains:"
-DOMAINS=("${KNOWN_DOMAINS[@]}")
-while IFS= read -r domain; do
-    [[ -z "${domain}" ]] && continue
-    DOMAINS+=("${domain}")
-done < <(
-    defaults domains 2>/dev/null |
-        tr ',' '\n' |
-        sed 's/^ *//; s/ *$//' |
-        grep -Ei 'photos[-_.]?wallpaper' || true
-)
-
-printf '%s\n' "${DOMAINS[@]}" | sort -u | while read -r domain; do
+matching_defaults_domains | sort -u | while read -r domain; do
     [[ -z "${domain}" ]] && continue
     if defaults read "${domain}" >/dev/null 2>&1; then
         echo

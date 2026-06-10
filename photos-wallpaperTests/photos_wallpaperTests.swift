@@ -828,22 +828,25 @@ struct PhotosWallpaperTests {
 
     @Test func currentWallpaperAlbumControllerShowsAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
-                                                             albumAddResults: [.success(.alreadyInAlbum)])
+                                                             albumAddResults: [.success(.alreadyInAlbum)],
+                                                             expectedAlertTitle: "Already in the Photos Wallpaper album in Photos")
 
-        #expect(result.alerts.first?.title == "Already in Photos Wallpaper")
+        #expect(result.alerts.first?.title == "Already in the Photos Wallpaper album in Photos")
         #expect(result.alerts.first?.message == "The wallpaper photo was already in the Photos Wallpaper album.")
     }
 
     @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
-                                                             albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
+                                                             albumAddResults: [.success(.added), .success(.alreadyInAlbum)],
+                                                             expectedAlertTitle: "Photos Wallpaper Album Updated")
 
         #expect(result.alerts.first?.title == "Photos Wallpaper Album Updated")
         #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album. The wallpaper photo was already in the Photos Wallpaper album.")
     }
 
     private func currentWallpaperAlbumConfirmation(assetCount: Int,
-                                                   albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = []) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
+                                                   albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
+                                                   expectedAlertTitle: String = "Added to the Photos Wallpaper album in Photos") async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
@@ -865,10 +868,12 @@ struct PhotosWallpaperTests {
 
         controller.addCurrentWallpapersToAlbum()
         let didShowConfirmation = await waitForCondition {
-            alerts.first != nil
+            _ = controller
+            return !alerts.isEmpty
         }
 
         #expect(didShowConfirmation)
+        #expect(alerts.first?.title == expectedAlertTitle)
         #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
@@ -1202,10 +1207,13 @@ private extension NSScreen {
 /// Tests only need unique object identity, not a real Photos asset.
 ///
 /// `PHAsset` has no convenient public initializer for this use case, so the fake bit-casts an
-/// Objective-C object reference. It is only valid for identity comparisons; do not call Photos APIs
-/// on values returned from this helper.
+/// Objective-C object reference and retains it for the test run. It is only valid for identity
+/// comparisons; do not call Photos APIs on values returned from this helper.
+private var retainedFakeAssetObjects: [AnyObject] = []
+
 private func makeFakeAsset() -> PHAsset {
     let object: AnyObject = NSObject()
+    retainedFakeAssetObjects.append(object)
     return unsafeBitCast(object, to: PHAsset.self)
 }
 

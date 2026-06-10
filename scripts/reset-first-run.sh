@@ -1,32 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_SUPPORT_DIR="${HOME}/Library/Application Support/photos-wallpaper"
-
-KNOWN_DOMAINS=(
-    "com.rosehillsolutions.photoswallpaper"
-    "photos-wallpaper"
-    "photos_wallpaper"
-)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 echo "Resetting Photos Wallpaper first-run state..."
 
 echo
 echo "Clearing matching defaults domains..."
-DOMAINS=("${KNOWN_DOMAINS[@]}")
-while IFS= read -r domain; do
-    [[ -z "${domain}" ]] && continue
-    DOMAINS+=("${domain}")
-done < <(
-    defaults domains 2>/dev/null |
-        tr ',' '\n' |
-        sed 's/^ *//; s/ *$//' |
-        grep -Ei 'photos[-_.]?wallpaper' || true
-)
+mapfile -t DOMAINS < <(matching_defaults_domains | sort -u)
 if ((${#DOMAINS[@]} == 0)); then
     echo "No matching defaults domains found."
 else
-    printf '%s\n' "${DOMAINS[@]}" | sort -u | while read -r domain; do
+    printf '%s\n' "${DOMAINS[@]}" | while read -r domain; do
         [[ -z "${domain}" ]] && continue
         if defaults read "${domain}" >/dev/null 2>&1; then
             defaults delete "${domain}" >/dev/null 2>&1 || true
