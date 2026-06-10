@@ -121,6 +121,12 @@ final class BoundedLogFile {
         }
     }
 
+    func reset() throws {
+        let directoryURL = logURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try "".write(to: logURL, atomically: true, encoding: .utf8)
+    }
+
     private func trimIfNeeded(forAdditionalBytes additionalBytes: UInt64) throws {
         let currentSize = try currentLogSize()
         guard currentSize > 0, currentSize + additionalBytes > maxSizeBytes else { return }
@@ -171,6 +177,7 @@ final class AppRuntimeLogger {
     init(logURL: URL, fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         self.logURL = logURL
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
+        resetForCurrentSession()
     }
 
     func record(_ message: String, timestamp: Date = Date()) {
@@ -197,9 +204,19 @@ final class AppRuntimeLogger {
             #endif
         }
     }
+
+    private func resetForCurrentSession() {
+        do {
+            try logFile.reset()
+        } catch {
+            #if DEBUG
+            print("AppRuntimeLogger: failed to reset runtime log: \(error)")
+            #endif
+        }
+    }
 }
 
-/// Appends a plain-text history file so you can later answer "which photo was that wallpaper?"
+/// Appends a plain-text history file for wallpaper changes in the current app session.
 final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private static let defaultMaxLogSizeBytes: UInt64 = 10 * 1024 * 1024
     private static let defaultRetainedLineCount = 100
@@ -228,6 +245,8 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         formatter.locale = Locale(identifier: "en_GB")
         formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss"
         self.dateFormatter = formatter
+
+        resetForCurrentSession()
     }
 
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
@@ -301,6 +320,14 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             try logFile.append(line)
         } catch {
             debugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
+        }
+    }
+
+    private func resetForCurrentSession() {
+        do {
+            try logFile.reset()
+        } catch {
+            debugLog("WallpaperHistoryLogger: failed to reset history log: \(error)")
         }
     }
 

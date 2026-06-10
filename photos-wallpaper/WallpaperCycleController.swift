@@ -15,7 +15,7 @@ protocol WallpaperCycleControlling: AnyObject, ObservableObject {
 protocol WallpaperCycleNotifying {
     func notifyNoPhotosAvailable()
     func notifyPhotoLibraryPermissionDenied()
-    func notifyCurrentWallpapersAddedToAlbum(count: Int)
+    func notifyCurrentWallpapersAddedToAlbum(count: Int, fallback: @escaping () -> Void)
 }
 
 /// Production notifier used when the app needs to explain why wallpaper selection failed.
@@ -42,23 +42,33 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
                           body: "Photos Wallpaper can't set your wallpaper because it does not have permission to read your photo library. Enable access in System Settings > Privacy & Security > Photos.")
     }
 
-    func notifyCurrentWallpapersAddedToAlbum(count: Int) {
+    func notifyCurrentWallpapersAddedToAlbum(count: Int, fallback: @escaping () -> Void) {
         queueNotification(identifier: "current-wallpapers-added-to-album-\(UUID().uuidString)",
                           title: "Added to Photos Wallpaper",
-                          body: "Added \(count) current wallpaper photo\(count == 1 ? "" : "s") to the Photos Wallpaper album.")
+                          body: "Added \(count) current wallpaper photo\(count == 1 ? "" : "s") to the Photos Wallpaper album.",
+                          fallback: fallback)
     }
 
-    private func queueNotification(identifier: String, title: String, body: String) {
+    private func queueNotification(identifier: String,
+                                   title: String,
+                                   body: String,
+                                   fallback: (() -> Void)? = nil) {
         Task {
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound])
                 guard granted else {
                     debugLog("UserNotificationWallpaperCycleNotifier: notification authorization was not granted.")
+                    runNotificationFallback(fallback)
                     return
                 }
 
                 let settings = await center.notificationSettings()
                 debugLog("UserNotificationWallpaperCycleNotifier: notification authorization status is \(settings.authorizationStatus.rawValue), alert setting is \(settings.alertSetting.rawValue).")
+                guard settings.alertSetting == .enabled else {
+                    debugLog("UserNotificationWallpaperCycleNotifier: notification alerts are not enabled.")
+                    runNotificationFallback(fallback)
+                    return
+                }
 
                 let content = UNMutableNotificationContent()
                 content.title = title
@@ -72,8 +82,14 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
                 debugLog("UserNotificationWallpaperCycleNotifier: queued notification \(identifier).")
             } catch {
                 debugLog("UserNotificationWallpaperCycleNotifier: failed to queue notification \(identifier): \(error).")
+                runNotificationFallback(fallback)
             }
         }
+    }
+
+    private func runNotificationFallback(_ fallback: (() -> Void)?) {
+        guard let fallback else { return }
+        DispatchQueue.main.async(execute: fallback)
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,

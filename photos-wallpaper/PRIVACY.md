@@ -26,7 +26,7 @@ The app stores a few settings locally on your Mac:
 
 ## Wallpaper History
 
-When a wallpaper is applied, Photos Wallpaper can write a plain-text history entry so you can later identify which photo appeared on which display.
+When a wallpaper is applied, Photos Wallpaper can write a plain-text history entry for the current app session.
 
 The history file is stored here:
 
@@ -40,7 +40,7 @@ History entries may include:
 - the display name or screen number
 - the time the wallpaper was applied
 
-The history log is kept locally. It is not sent anywhere by the app.
+The history log is cleared when Photos Wallpaper starts. It is kept locally and is not sent anywhere by the app.
 
 ## Runtime Diagnostics
 

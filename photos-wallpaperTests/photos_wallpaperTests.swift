@@ -627,6 +627,30 @@ struct PhotosWallpaperTests {
         #expect(text == "two\nthree\nfour\n")
     }
 
+    @Test func runtimeLoggerClearsPreviousSessionLogOnStartup() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "yesterday\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        _ = AppRuntimeLogger(logURL: logURL)
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "")
+    }
+
+    @Test func wallpaperHistoryLoggerClearsPreviousSessionLogOnStartup() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "Photo ID OLD-ID/L0/001 was set as the wallpaper on 9 June 2026 at 13:16:18\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        _ = WallpaperHistoryLogger(logURL: logURL)
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "")
+    }
+
     @Test func wallpaperHistoryEntryFormatterBuildsExpectedMultipleScreenLine() {
         let photoDescription = PhotoHistoryAssetDescriptionFormatter.string(filename: "IMG_4501.JPG",
                                                                             creationDateText: "22 Dec 2015 at 11:58:17",
@@ -1066,7 +1090,7 @@ private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
         photoLibraryPermissionDeniedNotificationCount += 1
     }
 
-    func notifyCurrentWallpapersAddedToAlbum(count: Int) {
+    func notifyCurrentWallpapersAddedToAlbum(count: Int, fallback: @escaping () -> Void) {
         currentWallpapersAddedCounts.append(count)
     }
 }

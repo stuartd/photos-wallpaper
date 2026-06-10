@@ -119,7 +119,13 @@ final class CurrentWallpaperAlbumController {
         switch result {
         case .added(let addedCount, let missingIdentifierCount, let failedAddCount):
             if addedCount > 0, missingIdentifierCount == 0, failedAddCount == 0 {
-                notifier.notifyCurrentWallpapersAddedToAlbum(count: addedCount)
+                let message = albumSummary(addedCount: addedCount,
+                                           missingIdentifierCount: missingIdentifierCount,
+                                           failedAddCount: failedAddCount)
+                notifier.notifyCurrentWallpapersAddedToAlbum(count: addedCount) { [weak self] in
+                    self?.showAlert(title: "Added to Photos Wallpaper",
+                                    message: message)
+                }
                 return
             }
             showAlert(title: "Some Wallpapers Could Not Be Added",
