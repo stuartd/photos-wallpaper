@@ -38,13 +38,18 @@ enum PhotosWallpaperAlbumError: LocalizedError {
     }
 }
 
+enum PhotosWallpaperAlbumAddResult: Equatable {
+    case added
+    case alreadyInAlbum
+}
+
 protocol PhotoManaging: AnyObject {
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
-    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void)
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
 }
 
@@ -207,7 +212,7 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void) {
         switch refreshPhotos() {
         case .ready:
             break
@@ -418,7 +423,24 @@ final class PhotoManager: PhotoManaging {
         return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options).firstObject
     }
 
-    private func add(asset: PHAsset, to album: PHAssetCollection, completion: @escaping (Result<Void, Error>) -> Void) {
+    private static func album(_ album: PHAssetCollection, contains asset: PHAsset) -> Bool {
+        let assets = PHAsset.fetchAssets(in: album, options: nil)
+        var containsAsset = false
+        assets.enumerateObjects { albumAsset, _, stop in
+            guard albumAsset.localIdentifier == asset.localIdentifier else { return }
+            containsAsset = true
+            stop.pointee = true
+        }
+        return containsAsset
+    }
+
+    private func add(asset: PHAsset, to album: PHAssetCollection, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void) {
+        guard !Self.album(album, contains: asset) else {
+            debugLog("PhotoManager: asset \(asset.localIdentifier) is already in Photos Wallpaper album.")
+            completion(.success(.alreadyInAlbum))
+            return
+        }
+
         PHPhotoLibrary.shared().performChanges {
             guard let changeRequest = PHAssetCollectionChangeRequest(for: album) else { return }
             changeRequest.addAssets([asset] as NSArray)
@@ -436,7 +458,7 @@ final class PhotoManager: PhotoManaging {
             }
 
             debugLog("PhotoManager: added asset \(asset.localIdentifier) to Photos Wallpaper album.")
-            completion(.success(()))
+            completion(.success(.added))
         }
     }
 

@@ -729,7 +729,7 @@ struct PhotosWallpaperTests {
             result = $0
         }
 
-        #expect(result == .added(addedCount: 2, missingIdentifierCount: 0, failedAddCount: 0))
+        #expect(result == .added(addedCount: 2, alreadyInAlbumCount: 0, missingIdentifierCount: 0, failedAddCount: 0))
         #expect(photoManager.batchLookupRequests == [["FIRST-ID/L0/001", "SECOND-ID/L0/001"]])
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
         #expect(photoManager.wallpaperAssignments.isEmpty)
@@ -741,7 +741,7 @@ struct PhotosWallpaperTests {
         let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
         photoManager.missingLookupIdentifiers = ["MISSING-ID/L0/001"]
         photoManager.albumAddResults = [
-            .success(()),
+            .success(.added),
             .failure(TestError.expectedFailure)
         ]
         let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
@@ -751,7 +751,26 @@ struct PhotosWallpaperTests {
             result = $0
         }
 
-        #expect(result == .added(addedCount: 1, missingIdentifierCount: 1, failedAddCount: 1))
+        #expect(result == .added(addedCount: 1, alreadyInAlbumCount: 0, missingIdentifierCount: 1, failedAddCount: 1))
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
+    }
+
+    @Test func currentWallpaperAlbumAdderReportsAlreadyAddedPhotos() {
+        let firstAsset = makeFakeAsset()
+        let secondAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
+        photoManager.albumAddResults = [
+            .success(.alreadyInAlbum),
+            .success(.added)
+        ]
+        let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
+        var result: CurrentWallpaperAlbumAdditionResult?
+
+        adder.addWallpapers(withLocalIdentifiers: ["FIRST-ID/L0/001", "SECOND-ID/L0/001"]) {
+            result = $0
+        }
+
+        #expect(result == .added(addedCount: 1, alreadyInAlbumCount: 1, missingIdentifierCount: 0, failedAddCount: 0))
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
     }
 
@@ -807,12 +826,30 @@ struct PhotosWallpaperTests {
         #expect(result.alerts.first?.message == "Added all wallpaper photos to the Photos Wallpaper album.")
     }
 
-    private func currentWallpaperAlbumConfirmation(assetCount: Int) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
+    @Test func currentWallpaperAlbumControllerShowsAlreadyInAlbumConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
+                                                             albumAddResults: [.success(.alreadyInAlbum)])
+
+        #expect(result.alerts.first?.title == "Already in Photos Wallpaper")
+        #expect(result.alerts.first?.message == "The wallpaper photo was already in the Photos Wallpaper album.")
+    }
+
+    @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
+                                                             albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
+
+        #expect(result.alerts.first?.title == "Photos Wallpaper Album Updated")
+        #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album. The wallpaper photo was already in the Photos Wallpaper album.")
+    }
+
+    private func currentWallpaperAlbumConfirmation(assetCount: Int,
+                                                   albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = []) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let assets = (0..<assetCount).map { _ in makeFakeAsset() }
         let photoManager = FakePhotoManager(assetsToReturn: assets)
+        photoManager.albumAddResults = albumAddResults
         var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(historyLogger: logger,
                                                         photoManager: photoManager) { title, message in
@@ -828,11 +865,10 @@ struct PhotosWallpaperTests {
 
         controller.addCurrentWallpapersToAlbum()
         let didShowConfirmation = await waitForCondition {
-            alerts.first?.title == "Added to Photos Wallpaper"
+            alerts.first != nil
         }
 
         #expect(didShowConfirmation)
-        #expect(alerts.first?.title == "Added to Photos Wallpaper")
         #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
@@ -857,7 +893,7 @@ private final class FakePhotoManager: PhotoManaging {
     private(set) var batchLookupRequests: [[String]] = []
     var missingLookupIdentifiers = Set<String>()
     var photoLookupOverride: PhotoAssetsLookupResult?
-    var albumAddResults: [Result<Void, Error>] = []
+    var albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = []
     var shouldSucceedSettingWallpaper = true
 
     init(assetsToReturn: [PHAsset]? = nil,
@@ -950,10 +986,10 @@ private final class FakePhotoManager: PhotoManaging {
         }
     }
 
-    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<Void, Error>) -> Void) {
+    func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void) {
         albumAddRequests.append(asset)
         if albumAddResults.isEmpty {
-            completion(.success(()))
+            completion(.success(.added))
         } else {
             completion(albumAddResults.removeFirst())
         }

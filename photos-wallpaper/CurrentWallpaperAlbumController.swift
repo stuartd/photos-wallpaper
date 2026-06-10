@@ -2,7 +2,7 @@ import AppKit
 import Photos
 
 enum CurrentWallpaperAlbumAdditionResult: Equatable {
-    case added(addedCount: Int, missingIdentifierCount: Int, failedAddCount: Int)
+    case added(addedCount: Int, alreadyInAlbumCount: Int, missingIdentifierCount: Int, failedAddCount: Int)
     case noRememberedWallpapers
     case waitingForAuthorization
     case permissionDenied
@@ -51,6 +51,7 @@ struct CurrentWallpaperAlbumAdder {
                                   completion: @escaping (CurrentWallpaperAlbumAdditionResult) -> Void) {
         guard !assets.isEmpty else {
             completion(.added(addedCount: 0,
+                              alreadyInAlbumCount: 0,
                               missingIdentifierCount: missingIdentifierCount,
                               failedAddCount: 0))
             return
@@ -58,6 +59,8 @@ struct CurrentWallpaperAlbumAdder {
 
         addAssetToAlbum(assets,
                         index: 0,
+                        addedCount: 0,
+                        alreadyInAlbumCount: 0,
                         missingIdentifierCount: missingIdentifierCount,
                         failedAddCount: 0,
                         completion: completion)
@@ -65,27 +68,42 @@ struct CurrentWallpaperAlbumAdder {
 
     private func addAssetToAlbum(_ assets: [PHAsset],
                                  index: Int,
+                                 addedCount: Int,
+                                 alreadyInAlbumCount: Int,
                                  missingIdentifierCount: Int,
                                  failedAddCount: Int,
                                  completion: @escaping (CurrentWallpaperAlbumAdditionResult) -> Void) {
         guard index < assets.count else {
-            completion(.added(addedCount: assets.count - failedAddCount,
+            completion(.added(addedCount: addedCount,
+                              alreadyInAlbumCount: alreadyInAlbumCount,
                               missingIdentifierCount: missingIdentifierCount,
                               failedAddCount: failedAddCount))
             return
         }
 
         photoManager.addToPhotosWallpaperAlbum(asset: assets[index]) { result in
+            let nextAddedCount: Int
+            let nextAlreadyInAlbumCount: Int
             let nextFailedAddCount: Int
             switch result {
-            case .success:
+            case .success(.added):
+                nextAddedCount = addedCount + 1
+                nextAlreadyInAlbumCount = alreadyInAlbumCount
+                nextFailedAddCount = failedAddCount
+            case .success(.alreadyInAlbum):
+                nextAddedCount = addedCount
+                nextAlreadyInAlbumCount = alreadyInAlbumCount + 1
                 nextFailedAddCount = failedAddCount
             case .failure(let error):
                 debugLog("CurrentWallpaperAlbumAdder: failed to add current wallpaper \(index + 1) to album: \(error)")
+                nextAddedCount = addedCount
+                nextAlreadyInAlbumCount = alreadyInAlbumCount
                 nextFailedAddCount = failedAddCount + 1
             }
             addAssetToAlbum(assets,
                             index: index + 1,
+                            addedCount: nextAddedCount,
+                            alreadyInAlbumCount: nextAlreadyInAlbumCount,
                             missingIdentifierCount: missingIdentifierCount,
                             failedAddCount: nextFailedAddCount,
                             completion: completion)
@@ -93,14 +111,20 @@ struct CurrentWallpaperAlbumAdder {
     }
 }
 
-final class CurrentWallpaperAlbumController {
+@MainActor final class CurrentWallpaperAlbumController {
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
-    private let showAlert: (String, String) -> Void
+    private let showAlert: @MainActor (String, String) -> Void
+
+    convenience init(historyLogger: WallpaperHistoryLogger) {
+        self.init(historyLogger: historyLogger,
+                  photoManager: PhotoManager.shared,
+                  showAlert: CurrentWallpaperAlbumController.presentAlert)
+    }
 
     init(historyLogger: WallpaperHistoryLogger,
-         photoManager: PhotoManaging = PhotoManager.shared,
-         showAlert: @escaping (String, String) -> Void = CurrentWallpaperAlbumController.presentAlert) {
+         photoManager: PhotoManaging,
+         showAlert: @escaping @MainActor (String, String) -> Void) {
         self.historyLogger = historyLogger
         self.photoManager = photoManager
         self.showAlert = showAlert
@@ -109,7 +133,7 @@ final class CurrentWallpaperAlbumController {
     func addCurrentWallpapersToAlbum() {
         let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
         CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.handle(result)
             }
         }
@@ -117,16 +141,18 @@ final class CurrentWallpaperAlbumController {
 
     private func handle(_ result: CurrentWallpaperAlbumAdditionResult) {
         switch result {
-        case .added(let addedCount, let missingIdentifierCount, let failedAddCount):
-            if addedCount > 0, missingIdentifierCount == 0, failedAddCount == 0 {
+        case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
+            if missingIdentifierCount == 0, failedAddCount == 0 {
                 let message = albumSummary(addedCount: addedCount,
+                                           alreadyInAlbumCount: alreadyInAlbumCount,
                                            missingIdentifierCount: missingIdentifierCount,
                                            failedAddCount: failedAddCount)
-                showAlert("Added to Photos Wallpaper", message)
+                showAlert(albumSuccessTitle(addedCount: addedCount, alreadyInAlbumCount: alreadyInAlbumCount), message)
                 return
             }
             showAlert("Some Wallpapers Could Not Be Added",
                       albumSummary(addedCount: addedCount,
+                                   alreadyInAlbumCount: alreadyInAlbumCount,
                                    missingIdentifierCount: missingIdentifierCount,
                                    failedAddCount: failedAddCount))
         case .noRememberedWallpapers:
@@ -144,16 +170,31 @@ final class CurrentWallpaperAlbumController {
         }
     }
 
-    private func albumSummary(addedCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
+    private func albumSummary(addedCount: Int, alreadyInAlbumCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
         var parts: [String] = []
-        parts.append(albumSuccessMessage(addedCount: addedCount))
+        if addedCount > 0 {
+            parts.append(albumSuccessMessage(addedCount: addedCount))
+        }
+        if alreadyInAlbumCount > 0 {
+            parts.append(albumAlreadyInAlbumMessage(alreadyInAlbumCount: alreadyInAlbumCount))
+        }
         if missingIdentifierCount > 0 {
             parts.append("\(missingIdentifierCount) remembered wallpaper photo\(missingIdentifierCount == 1 ? "" : "s") could not be found in Photos.")
         }
         if failedAddCount > 0 {
             parts.append("\(failedAddCount) wallpaper photo\(failedAddCount == 1 ? "" : "s") could not be added.")
         }
+        if parts.isEmpty {
+            parts.append("No wallpaper photos were added to the Photos Wallpaper album.")
+        }
         return parts.joined(separator: " ")
+    }
+
+    private func albumSuccessTitle(addedCount: Int, alreadyInAlbumCount: Int) -> String {
+        if addedCount > 0 {
+            return alreadyInAlbumCount > 0 ? "Photos Wallpaper Album Updated" : "Added to the Photos Wallpaper album in Photos"
+        }
+        return "Already in the Photos Wallpaper album in Photos"
     }
 
     private func albumSuccessMessage(addedCount: Int) -> String {
@@ -164,6 +205,17 @@ final class CurrentWallpaperAlbumController {
             return "Added both wallpaper photos to the Photos Wallpaper album."
         default:
             return "Added all wallpaper photos to the Photos Wallpaper album."
+        }
+    }
+
+    private func albumAlreadyInAlbumMessage(alreadyInAlbumCount: Int) -> String {
+        switch alreadyInAlbumCount {
+        case 1:
+            return "The wallpaper photo was already in the Photos Wallpaper album."
+        case 2:
+            return "Both wallpaper photos were already in the Photos Wallpaper album."
+        default:
+            return "\(alreadyInAlbumCount) wallpaper photos were already in the Photos Wallpaper album."
         }
     }
 
