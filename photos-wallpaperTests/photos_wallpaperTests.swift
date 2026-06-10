@@ -536,6 +536,95 @@ struct PhotosWallpaperTests {
         #expect(notifier.noPhotosNotificationCount == 1)
     }
 
+    @Test func scheduledCycleSkipsWhileScreensAreAsleep() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let screenSleepStateProvider = FakeScreenSleepStateProvider(screensAreAsleep: true)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: screenSleepStateProvider
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func scheduledCycleRunsAgainAfterScreensWake() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let screenSleepStateProvider = FakeScreenSleepStateProvider(screensAreAsleep: true)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: screenSleepStateProvider
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        screenSleepStateProvider.screensAreAsleep = false
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func manualCycleStillRunsWhileScreensAreMarkedAsleep() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let screenSleepStateProvider = FakeScreenSleepStateProvider(screensAreAsleep: true)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: screenSleepStateProvider
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
     @Test func scheduledCycleNotifiesAgainWhenUnavailableReasonChanges() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -1191,6 +1280,14 @@ private final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
 
 private struct FakeScreenProvider: ScreenProviding {
     let screens: [NSScreen]
+}
+
+private final class FakeScreenSleepStateProvider: ScreenSleepStateProviding {
+    var screensAreAsleep: Bool
+
+    init(screensAreAsleep: Bool = false) {
+        self.screensAreAsleep = screensAreAsleep
+    }
 }
 
 private enum TestError: Error {

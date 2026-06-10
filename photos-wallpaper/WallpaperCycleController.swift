@@ -109,6 +109,10 @@ protocol WakeEventObserving {
     func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation
 }
 
+@MainActor protocol ScreenSleepStateProviding: AnyObject {
+    var screensAreAsleep: Bool { get }
+}
+
 final class NotificationWakeEventObservation: WakeEventObservation {
     private let center: NotificationCenter
     private var token: NSObjectProtocol?
@@ -135,6 +139,38 @@ struct AppKitWakeEventObserver: WakeEventObserving {
             handler()
         }
         return NotificationWakeEventObservation(center: center, token: token)
+    }
+}
+
+@MainActor final class AppKitScreenSleepStateProvider: ScreenSleepStateProviding {
+    private let center: NotificationCenter
+    private var tokens: [NSObjectProtocol] = []
+    private(set) var screensAreAsleep = false
+
+    init(center: NotificationCenter = NSWorkspace.shared.notificationCenter) {
+        self.center = center
+        observe(NSWorkspace.screensDidSleepNotification, screensAreAsleep: true)
+        observe(NSWorkspace.screensDidWakeNotification, screensAreAsleep: false)
+        observe(NSWorkspace.willSleepNotification, screensAreAsleep: true)
+        observe(NSWorkspace.didWakeNotification, screensAreAsleep: false)
+    }
+
+    deinit {
+        for token in tokens {
+            center.removeObserver(token)
+        }
+    }
+
+    private func observe(_ name: NSNotification.Name, screensAreAsleep: Bool) {
+        let token = center.addObserver(forName: name,
+                                       object: nil,
+                                       queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.screensAreAsleep = screensAreAsleep
+                debugLog("AppKitScreenSleepStateProvider: screens are \(screensAreAsleep ? "asleep" : "awake").")
+            }
+        }
+        tokens.append(token)
     }
 }
 
@@ -249,6 +285,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var timer: CancellableTimer?
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
+    private let screenSleepStateProvider: ScreenSleepStateProviding
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
@@ -266,10 +303,30 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   screenProvider: AppKitScreenProvider(),
                   wakeEventObserver: AppKitWakeEventObserver(),
                   timerScheduler: FoundationTimerScheduler(),
+                  screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   legacyDefaultsURL: Self.defaultLegacyDefaultsURL)
     }
 
     /// Injection-friendly initializer used by tests and by the convenience initializer above.
+    convenience init(photoManager: PhotoManaging,
+                     defaults: KeyValueStoring,
+                     historyLogger: WallpaperHistoryLogging,
+                     notifier: WallpaperCycleNotifying,
+                     screenProvider: ScreenProviding,
+                     wakeEventObserver: WakeEventObserving,
+                     timerScheduler: TimerScheduling,
+                     legacyDefaultsURL: URL? = nil) {
+        self.init(photoManager: photoManager,
+                  defaults: defaults,
+                  historyLogger: historyLogger,
+                  notifier: notifier,
+                  screenProvider: screenProvider,
+                  wakeEventObserver: wakeEventObserver,
+                  timerScheduler: timerScheduler,
+                  screenSleepStateProvider: AppKitScreenSleepStateProvider(),
+                  legacyDefaultsURL: legacyDefaultsURL)
+    }
+
     init(photoManager: PhotoManaging,
          defaults: KeyValueStoring,
          historyLogger: WallpaperHistoryLogging,
@@ -277,6 +334,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          screenProvider: ScreenProviding,
          wakeEventObserver: WakeEventObserving,
          timerScheduler: TimerScheduling,
+         screenSleepStateProvider: ScreenSleepStateProviding,
          legacyDefaultsURL: URL? = nil) {
         self.photoManager = photoManager
         self.defaults = defaults
@@ -285,6 +343,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.screenProvider = screenProvider
         self.wakeEventObserver = wakeEventObserver
         self.timerScheduler = timerScheduler
+        self.screenSleepStateProvider = screenSleepStateProvider
         if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
@@ -399,6 +458,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     /// The method stays on the main actor because it touches AppKit screen objects and because the
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
     private func tick(trigger: WallpaperCycleTrigger) {
+        if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {
+            debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
+            return
+        }
         guard !isCycleInProgress else {
             debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
             return
