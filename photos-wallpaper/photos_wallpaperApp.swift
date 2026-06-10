@@ -27,7 +27,6 @@ struct photos_wallpaperApp: App {
     private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
-    private let photoHistoryLookupWindowController = PhotoHistoryLookupWindowController()
     private let currentWallpaperAlbumController: CurrentWallpaperAlbumController
 
     init() {
@@ -66,10 +65,6 @@ struct photos_wallpaperApp: App {
             Menu("Logs") {
                 Button("Show Wallpaper History") {
                     historyLogger.openHistoryLog()
-                }
-
-                Button("Find Photos from Wallpaper History...") {
-                    photoHistoryLookupWindowController.showLookup()
                 }
 
                 Button("Show Diagnostic Log") {

@@ -50,12 +50,6 @@ struct WallpaperHistoryEntryFormatter {
 
     private static let identifierMarker = "id:"
 
-    static let exampleLine = line(photoDescription: PhotoHistoryAssetDescriptionFormatter.string(
-        filename: "IMG_4501.JPG",
-        creationDateText: "22 Dec 2015 at 11:58:17",
-        localIdentifier: "A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001"
-    ), screenName: "Screen 1", screenCount: 1, shownAtText: "10 June 2026 at 13:16:18")
-
     static func line(photoDescription: String, screenName: String, screenCount: Int, timestamp: Date, dateFormatter: DateFormatter) -> String {
         line(photoDescription: photoDescription,
              screenName: screenName,
