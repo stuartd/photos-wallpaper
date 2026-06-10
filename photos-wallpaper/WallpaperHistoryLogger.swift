@@ -9,6 +9,10 @@ protocol WallpaperHistoryLogging {
 struct PhotoHistoryAssetDescriptionFormatter {
     private init() {}
 
+    private static let localIdentifierRegex = try! NSRegularExpression(
+        pattern: #"(?:^|,\s*)id:\s*(\S+)\s*$"#
+    )
+
     static func string(filename: String, creationDate: Date?, localIdentifier: String, dateFormatter: DateFormatter) -> String {
         string(filename: filename,
                creationDateText: creationDate.map { dateFormatter.string(from: $0) },
@@ -22,18 +26,29 @@ struct PhotoHistoryAssetDescriptionFormatter {
         }
         return "\(filename), \(identifierText)"
     }
+
+    static func localIdentifier(in photoDescription: String) -> String? {
+        let matchRange = NSRange(photoDescription.startIndex..., in: photoDescription)
+        if let match = localIdentifierRegex.firstMatch(in: photoDescription, range: matchRange),
+           let identifierRange = Range(match.range(at: 1), in: photoDescription) {
+            return normalizedIdentifier(String(photoDescription[identifierRange]))
+        }
+
+        return normalizedIdentifier(photoDescription)
+    }
+
+    private static func normalizedIdentifier(_ identifier: String) -> String? {
+        let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIdentifier.isEmpty else { return nil }
+        guard trimmedIdentifier.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return nil }
+        return trimmedIdentifier
+    }
 }
 
 struct WallpaperHistoryEntryFormatter {
     private init() {}
 
     private static let identifierMarker = "id:"
-
-    static let exampleLine = line(photoDescription: PhotoHistoryAssetDescriptionFormatter.string(
-        filename: "IMG_4501.JPG",
-        creationDateText: "22 Dec 2015 at 11:58:17",
-        localIdentifier: "A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001"
-    ), screenName: "Screen 1", screenCount: 1, shownAtText: "10 June 2026 at 13:16:18")
 
     static func line(photoDescription: String, screenName: String, screenCount: Int, timestamp: Date, dateFormatter: DateFormatter) -> String {
         line(photoDescription: photoDescription,
@@ -106,6 +121,12 @@ final class BoundedLogFile {
         }
     }
 
+    func reset() throws {
+        let directoryURL = logURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try "".write(to: logURL, atomically: true, encoding: .utf8)
+    }
+
     private func trimIfNeeded(forAdditionalBytes additionalBytes: UInt64) throws {
         let currentSize = try currentLogSize()
         guard currentSize > 0, currentSize + additionalBytes > maxSizeBytes else { return }
@@ -156,6 +177,7 @@ final class AppRuntimeLogger {
     init(logURL: URL, fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         self.logURL = logURL
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
+        resetForCurrentSession()
     }
 
     func record(_ message: String, timestamp: Date = Date()) {
@@ -182,9 +204,19 @@ final class AppRuntimeLogger {
             #endif
         }
     }
+
+    private func resetForCurrentSession() {
+        do {
+            try logFile.reset()
+        } catch {
+            #if DEBUG
+            print("AppRuntimeLogger: failed to reset runtime log: \(error)")
+            #endif
+        }
+    }
 }
 
-/// Appends a plain-text history file so you can later answer "which photo was that wallpaper?"
+/// Appends a plain-text history file for wallpaper changes in the current app session.
 final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private static let defaultMaxLogSizeBytes: UInt64 = 10 * 1024 * 1024
     private static let defaultRetainedLineCount = 100
@@ -192,6 +224,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let logURL: URL
     private let logFile: BoundedLogFile
     private let dateFormatter: DateFormatter
+    private var currentWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
     private var historyWindow: NSWindow?
     private weak var historyTextView: NSTextView?
@@ -212,11 +245,14 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         formatter.locale = Locale(identifier: "en_GB")
         formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss"
         self.dateFormatter = formatter
+
+        resetForCurrentSession()
     }
 
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
         let historyText = writeQueue.sync {
             writeWallpaperChange(photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp)
+            rememberCurrentWallpaper(photoName: photoName, screenName: screenName, screenCount: screenCount)
             return try? String(contentsOf: logURL, encoding: .utf8)
         }
 
@@ -225,6 +261,53 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
                 self.updateOpenHistoryWindow(with: historyText)
             }
         }
+    }
+
+    func currentWallpaperIdentifiersSnapshot() -> [String] {
+        writeQueue.sync {
+            var seenIdentifiers = Set<String>()
+            var identifiers: [String] = []
+            for screenName in currentWallpaperIdentifiersByScreen.keys.sorted(by: screenSortOrder) {
+                guard let identifier = currentWallpaperIdentifiersByScreen[screenName],
+                      !seenIdentifiers.contains(identifier) else { continue }
+                identifiers.append(identifier)
+                seenIdentifiers.insert(identifier)
+            }
+            return identifiers
+        }
+    }
+
+    private func rememberCurrentWallpaper(photoName: String, screenName: String, screenCount: Int) {
+        guard let identifier = PhotoHistoryAssetDescriptionFormatter.localIdentifier(in: photoName) else {
+            debugLog("WallpaperHistoryLogger: could not remember current wallpaper identifier for \(screenName).")
+            return
+        }
+
+        currentWallpaperIdentifiersByScreen = currentWallpaperIdentifiersByScreen.filter { screenName, _ in
+            guard let screenNumber = Self.screenNumber(in: screenName) else { return true }
+            return screenNumber <= screenCount
+        }
+        currentWallpaperIdentifiersByScreen[screenName] = identifier
+    }
+
+    private func screenSortOrder(_ lhs: String, _ rhs: String) -> Bool {
+        switch (Self.screenNumber(in: lhs), Self.screenNumber(in: rhs)) {
+        case let (left?, right?):
+            return left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return lhs < rhs
+        }
+    }
+
+    private static func screenNumber(in screenName: String) -> Int? {
+        screenName
+            .components(separatedBy: CharacterSet.decimalDigits.inverted)
+            .compactMap(Int.init)
+            .first
     }
 
     private func writeWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
@@ -237,6 +320,14 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             try logFile.append(line)
         } catch {
             debugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
+        }
+    }
+
+    private func resetForCurrentSession() {
+        do {
+            try logFile.reset()
+        } catch {
+            debugLog("WallpaperHistoryLogger: failed to reset history log: \(error)")
         }
     }
 

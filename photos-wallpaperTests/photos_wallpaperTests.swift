@@ -627,8 +627,28 @@ struct PhotosWallpaperTests {
         #expect(text == "two\nthree\nfour\n")
     }
 
-    @Test func photoHistoryIdentifierAcceptsRawIdentifier() {
-        #expect(PhotoHistoryIdentifier.extract(from: " 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 ") == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+    @Test func runtimeLoggerClearsPreviousSessionLogOnStartup() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "yesterday\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        _ = AppRuntimeLogger(logURL: logURL)
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "")
+    }
+
+    @Test func wallpaperHistoryLoggerClearsPreviousSessionLogOnStartup() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "Photo ID OLD-ID/L0/001 was set as the wallpaper on 9 June 2026 at 13:16:18\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        _ = WallpaperHistoryLogger(logURL: logURL)
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(text == "")
     }
 
     @Test func wallpaperHistoryEntryFormatterBuildsExpectedMultipleScreenLine() {
@@ -655,7 +675,6 @@ struct PhotosWallpaperTests {
                                                        shownAtText: "10 June 2026 at 13:16:18")
 
         #expect(line == "Photo ID A43B9DD7-D57E-4B0A-A748-D46A11F7A839/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_4501.JPG created 22 Dec 2015 at 11:58:17)")
-        #expect(PhotoHistoryIdentifier.exampleHistoryLine == line)
     }
 
     @Test func photoHistoryAssetDescriptionFormatterIncludesFilenameCreationDateAndIdentifier() {
@@ -666,209 +685,160 @@ struct PhotosWallpaperTests {
                                                                        creationDateText: "11 May 2004 at 14:42:08",
                                                                        localIdentifier: "7")
 
-<<<<<<< HEAD
-        #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08,  id: 7")
-        #expect(twoDigitDay    == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
-=======
         #expect(singleDigitDay == "DSCN2550.jpg created 1 May 2004 at 14:42:08, id: 7")
         #expect(twoDigitDay == "DSCN2550.jpg created 11 May 2004 at 14:42:08, id: 7")
->>>>>>> b2d2872 (Reworked hostory log format for usability - #16)
     }
 
-    @Test func photoHistoryIdentifierAcceptsWholeHistoryLine() {
-        let line = "Photo ID 3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001 was set as the wallpaper for screen 1 on 10 June 2026 at 13:16:18 (IMG_6790.HEIC created Jan 1, 2024 at 12:00:00 AM)"
+    @Test func wallpaperHistoryLoggerSnapshotsCurrentWallpaperIdentifiersByScreen() {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let timestamp = Date(timeIntervalSince1970: 0)
 
-        #expect(PhotoHistoryIdentifier.extract(from: line) == "3C21E42E-01A1-4985-862B-F44C5B57A786/L0/001")
+        logger.recordWallpaperChange(photoName: "IMG_0002.HEIC created 2 Jan 2024 at 12:00:00, id: SECOND-ID/L0/001",
+                                      screenName: "Screen 2",
+                                      screenCount: 2,
+                                      timestamp: timestamp)
+        logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
+                                      screenName: "Screen 1",
+                                      screenCount: 2,
+                                      timestamp: timestamp)
+        logger.recordWallpaperChange(photoName: "IMG_DUPLICATE.HEIC created 3 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
+                                      screenName: "Screen 3",
+                                      screenCount: 3,
+                                      timestamp: timestamp)
+
+        #expect(logger.currentWallpaperIdentifiersSnapshot() == ["FIRST-ID/L0/001", "SECOND-ID/L0/001"])
+
+        logger.recordWallpaperChange(photoName: "IMG_SINGLE.HEIC created 4 Jan 2024 at 12:00:00, id: SINGLE-ID/L0/001",
+                                      screenName: "Screen 1",
+                                      screenCount: 1,
+                                      timestamp: timestamp)
+
+        #expect(logger.currentWallpaperIdentifiersSnapshot() == ["SINGLE-ID/L0/001"])
     }
 
-    @Test func photoHistoryIdentifierExtractsMultipleHistoryLines() {
-        let text = """
-        Photo ID FIRST-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
-        Photo ID SECOND-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:17:18 (IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM)
-        Photo ID THIRD-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:18:18 (IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM)
-        """
+    @Test func currentWallpaperAlbumAdderAddsDeduplicatedCurrentWallpapersWithoutChangingWallpaper() {
+        let firstAsset = makeFakeAsset()
+        let secondAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
+        let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
+        var result: CurrentWallpaperAlbumAdditionResult?
 
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
+        adder.addWallpapers(withLocalIdentifiers: [" FIRST-ID/L0/001 ", "FIRST-ID/L0/001", "SECOND-ID/L0/001"]) {
+            result = $0
+        }
 
-        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001", "THIRD-ID/L0/001"])
-        #expect(!result.isPasteTooLarge)
-        #expect(!result.didReachIdentifierLimit)
+        #expect(result == .added(addedCount: 2, missingIdentifierCount: 0, failedAddCount: 0))
+        #expect(photoManager.batchLookupRequests == [["FIRST-ID/L0/001", "SECOND-ID/L0/001"]])
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
+        #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
-    @Test func photoHistoryIdentifierDeduplicatesIdentifiers() {
-        let text = """
-        Photo ID SAME-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
-        Photo ID SAME-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:17:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
-        Photo ID OTHER-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:18:18 (IMG_0002.HEIC created Jan 2, 2024 at 12:00:00 AM)
-        """
-
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
-
-        #expect(result.identifiers == ["SAME-ID/L0/001", "OTHER-ID/L0/001"])
-    }
-
-    @Test func photoHistoryIdentifierAcceptsMultipleRawIdentifierLines() {
-        let text = """
-        FIRST-ID/L0/001
-        SECOND-ID/L0/001
-        """
-
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
-
-        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001"])
-    }
-
-    @Test func photoHistoryIdentifierAcceptsMixedHistoryLinesAndRawIdentifierLines() {
-        let text = """
-        Photo ID FIRST-ID/L0/001 was set as the wallpaper on 10 June 2026 at 13:16:18 (IMG_0001.HEIC created Jan 1, 2024 at 12:00:00 AM)
-        SECOND-ID/L0/001
-        Photo ID THIRD-ID/L0/001 was set as the wallpaper for screen 2 on 10 June 2026 at 13:18:18 (IMG_0003.HEIC created Jan 3, 2024 at 12:00:00 AM)
-        """
-
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
-
-        #expect(result.identifiers == ["FIRST-ID/L0/001", "SECOND-ID/L0/001", "THIRD-ID/L0/001"])
-    }
-
-    @Test func photoHistoryIdentifierRejectsLargePastes() {
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: String(repeating: "a", count: 11),
-                                                               maxCharacterCount: 10)
-
-        #expect(result.identifiers.isEmpty)
-        #expect(result.isPasteTooLarge)
-        #expect(!result.didReachIdentifierLimit)
-    }
-
-    @Test func photoHistoryIdentifierStopsAtIdentifierLimit() {
-        let text = (1...5)
-            .map { "Photo ID ID-\($0)/L0/001 was set as the wallpaper on 10 June 2026 at 13:1\($0):18 (IMG_\($0).HEIC created Jan \($0), 2024 at 12:00:00 AM)" }
-            .joined(separator: "\n")
-
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text, maxIdentifierCount: 3)
-
-        #expect(result.identifiers == ["ID-1/L0/001", "ID-2/L0/001", "ID-3/L0/001"])
-        #expect(result.didReachIdentifierLimit)
-    }
-
-    @Test func photoHistoryIdentifierDoesNotTreatLogTextWithoutIdentifierAsRawIdentifier() {
-        let text = "IMG_6790.HEIC was shown on Screen 1 on January 1, 2026 at 12:00:00 AM"
-
-        let result = PhotoHistoryIdentifier.extractIdentifiers(from: text)
-
-        #expect(result.identifiers.isEmpty)
-    }
-
-    @Test func photoHistoryPhotoFinderUsesOneBatchLookupAndPreservesSummaryData() {
+    @Test func currentWallpaperAlbumAdderReportsMissingPhotosAndAddFailures() {
         let firstAsset = makeFakeAsset()
         let secondAsset = makeFakeAsset()
         let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset])
         photoManager.missingLookupIdentifiers = ["MISSING-ID/L0/001"]
-        let extractionResult = PhotoHistoryIdentifier.ExtractionResult(
-            identifiers: ["FIRST-ID/L0/001", "MISSING-ID/L0/001", "SECOND-ID/L0/001"],
-            isPasteTooLarge: false,
-            didReachIdentifierLimit: true
-        )
+        photoManager.albumAddResults = [
+            .success(()),
+            .failure(TestError.expectedFailure)
+        ]
+        let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
+        var result: CurrentWallpaperAlbumAdditionResult?
 
-        let result = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult)
-
-        guard case .photos(let assets, let missingIdentifierCount, let didReachIdentifierLimit) = result else {
-            Issue.record("Expected photo lookup to return found assets.")
-            return
+        adder.addWallpapers(withLocalIdentifiers: ["FIRST-ID/L0/001", "MISSING-ID/L0/001", "SECOND-ID/L0/001"]) {
+            result = $0
         }
-        #expect(photoManager.batchLookupRequests == [["FIRST-ID/L0/001", "MISSING-ID/L0/001", "SECOND-ID/L0/001"]])
-        #expect(photoManager.singleLookupRequests.isEmpty)
-        #expect(assets.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
-        #expect(missingIdentifierCount == 1)
-        #expect(didReachIdentifierLimit)
+
+        #expect(result == .added(addedCount: 1, missingIdentifierCount: 1, failedAddCount: 1))
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
     }
 
-    @Test func photoHistoryPhotoFinderPropagatesAuthorizationFailures() {
-        let extractionResult = PhotoHistoryIdentifier.ExtractionResult(
-            identifiers: ["FIRST-ID/L0/001"],
-            isPasteTooLarge: false,
-            didReachIdentifierLimit: false
-        )
+    @Test func currentWallpaperAlbumAdderDoesNotSearchPhotosWhenThereAreNoRememberedWallpapers() {
         let photoManager = FakePhotoManager()
+        let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
+        var result: CurrentWallpaperAlbumAdditionResult?
+
+        adder.addWallpapers(withLocalIdentifiers: [" ", "\n"]) {
+            result = $0
+        }
+
+        #expect(result == .noRememberedWallpapers)
+        #expect(photoManager.batchLookupRequests.isEmpty)
+        #expect(photoManager.albumAddRequests.isEmpty)
+    }
+
+    @Test func currentWallpaperAlbumAdderPropagatesPhotosLookupFailures() {
+        let photoManager = FakePhotoManager()
+        let adder = CurrentWallpaperAlbumAdder(photoManager: photoManager)
 
         photoManager.photoLookupOverride = .waitingForAuthorization
-        if case .waitingForAuthorization = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
-            #expect(true)
-        } else {
-            Issue.record("Expected waiting-for-authorization lookup result.")
+        adder.addWallpapers(withLocalIdentifiers: ["FIRST-ID/L0/001"]) { result in
+            #expect(result == .waitingForAuthorization)
         }
 
         photoManager.photoLookupOverride = .permissionDenied
-        if case .permissionDenied = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
-            #expect(true)
-        } else {
-            Issue.record("Expected permission-denied lookup result.")
+        adder.addWallpapers(withLocalIdentifiers: ["FIRST-ID/L0/001"]) { result in
+            #expect(result == .permissionDenied)
         }
 
         photoManager.photoLookupOverride = .unavailable
-        if case .unavailable = PhotoHistoryPhotoFinder(photoManager: photoManager).findPhotos(for: extractionResult) {
-            #expect(true)
-        } else {
-            Issue.record("Expected unavailable lookup result.")
+        adder.addWallpapers(withLocalIdentifiers: ["FIRST-ID/L0/001"]) { result in
+            #expect(result == .unavailable)
         }
     }
 
-    @Test func photoHistoryLookupViewModelAddsEveryFoundAssetToAlbum() async {
-        let firstAsset = makeFakeAsset()
-        let secondAsset = makeFakeAsset()
-        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset],
-                                            completesImageRequestsImmediately: false)
-        let viewModel = PhotoHistoryLookupViewModel(assets: [firstAsset, secondAsset],
-                                                    missingIdentifierCount: 1,
-                                                    didReachIdentifierLimit: true,
-                                                    photoManager: photoManager)
+    @Test func currentWallpaperAlbumControllerShowsSingleWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 1)
 
-        viewModel.addToAlbum()
-        let didAddAssets = await photoManager.waitForAlbumAddCount(2)
-        let didFinishUpdatingViewModel = await waitForCondition {
-            viewModel.didAddToAlbum
-        }
-
-        #expect(didAddAssets)
-        #expect(didFinishUpdatingViewModel)
-        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(firstAsset), ObjectIdentifier(secondAsset)])
-        #expect(viewModel.didAddToAlbum)
-        #expect(viewModel.statusMessage == "Added 2 photos to the Photos Wallpaper album.")
-        #expect(viewModel.summary.contains("2 photos ready to add."))
-        #expect(viewModel.summary.contains("1 history entry could not be found."))
-        #expect(viewModel.summary.contains("Only the first 25 matching entries were processed."))
+        #expect(result.alerts.first?.message == "Added the wallpaper photo to the Photos Wallpaper album.")
     }
 
-    @Test func photoHistoryLookupViewModelReportsPartialAlbumAddFailures() async {
-        let firstAsset = makeFakeAsset()
-        let secondAsset = makeFakeAsset()
-        let thirdAsset = makeFakeAsset()
-        let photoManager = FakePhotoManager(assetsToReturn: [firstAsset, secondAsset, thirdAsset])
-        photoManager.albumAddResults = [
-            .success(()),
-            .failure(TestError.expectedFailure),
-            .success(())
-        ]
-        let viewModel = PhotoHistoryLookupViewModel(assets: [firstAsset, secondAsset, thirdAsset],
-                                                    missingIdentifierCount: 0,
-                                                    didReachIdentifierLimit: false,
-                                                    photoManager: photoManager)
+    @Test func currentWallpaperAlbumControllerShowsTwoWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 2)
 
-        viewModel.addToAlbum()
-        let didAddAssets = await photoManager.waitForAlbumAddCount(3)
-        let didFinishUpdatingViewModel = await waitForCondition {
-            viewModel.statusMessage == "Added 2 photos. 1 photo could not be added."
+        #expect(result.alerts.first?.message == "Added both wallpaper photos to the Photos Wallpaper album.")
+    }
+
+    @Test func currentWallpaperAlbumControllerShowsThreeOrMoreWallpaperConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 3)
+
+        #expect(result.alerts.first?.message == "Added all wallpaper photos to the Photos Wallpaper album.")
+    }
+
+    private func currentWallpaperAlbumConfirmation(assetCount: Int) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let assets = (0..<assetCount).map { _ in makeFakeAsset() }
+        let photoManager = FakePhotoManager(assetsToReturn: assets)
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(historyLogger: logger,
+                                                        photoManager: photoManager) { title, message in
+            alerts.append((title, message))
+        }
+        let timestamp = Date(timeIntervalSince1970: 0)
+        for index in 1...assetCount {
+            logger.recordWallpaperChange(photoName: "IMG_000\(index).HEIC created 1 Jan 2024 at 12:00:00, id: ID-\(index)/L0/001",
+                                          screenName: "Screen \(index)",
+                                          screenCount: assetCount,
+                                          timestamp: timestamp)
         }
 
-        #expect(didAddAssets)
-        #expect(didFinishUpdatingViewModel)
-        #expect(!viewModel.didAddToAlbum)
-        #expect(!viewModel.isAddingToAlbum)
-        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [
-            ObjectIdentifier(firstAsset),
-            ObjectIdentifier(secondAsset),
-            ObjectIdentifier(thirdAsset)
-        ])
+        controller.addCurrentWallpapersToAlbum()
+        let didShowConfirmation = await waitForCondition {
+            alerts.first?.title == "Added to Photos Wallpaper"
+        }
+
+        #expect(didShowConfirmation)
+        #expect(alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+        return (alerts, photoManager)
     }
+
 }
 
 private final class FakePhotoManager: PhotoManaging {
