@@ -11,14 +11,14 @@ protocol WallpaperCycleControlling: AnyObject, ObservableObject {
     func triggerNow()
 }
 
-/// Small notification abstraction so tests can verify "no photos" behavior without touching
-/// `UNUserNotificationCenter`.
+/// Small user-facing warning abstraction so tests can verify unavailable-library behavior without
+/// touching AppKit alerts or `UNUserNotificationCenter`.
 protocol WallpaperCycleNotifying {
     func notifyNoPhotosAvailable()
     func notifyPhotoLibraryPermissionDenied()
 }
 
-/// Production notifier used when the app needs to explain why wallpaper selection failed.
+/// Production warning presenter used when the app needs to explain why wallpaper selection failed.
 ///
 /// Notifications are requested lazily here instead of up-front at launch so the app only asks for
 /// permission if it actually needs to explain a missing-library situation.
@@ -37,9 +37,15 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     }
 
     func notifyPhotoLibraryPermissionDenied() {
-        queueNotification(identifier: "photo-library-permission-denied-\(UUID().uuidString)",
-                          title: "Photos Access Needed",
-                          body: "Photos Wallpaper can't set your wallpaper because it does not have permission to read your photo library. Enable access in System Settings > Privacy & Security > Photos.")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Photos Access Needed"
+            alert.informativeText = "Photos Wallpaper does not have permission to read your Photos library. Enable access in System Settings > Privacy & Security > Photos, then try again."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
     }
 
     private func queueNotification(identifier: String, title: String, body: String) {
@@ -310,6 +316,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var wakeObservation: WakeEventObservation?
     private let screenSleepStateProvider: ScreenSleepStateProviding
     private let activeUserSessionProvider: ActiveUserSessionProviding
+    private let preflightsPhotoAccessWhenScheduling: Bool
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
@@ -331,7 +338,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   timerScheduler: FoundationTimerScheduler(),
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: SystemActiveUserSessionProvider(),
-                  legacyDefaultsURL: Self.defaultLegacyDefaultsURL)
+                  legacyDefaultsURL: Self.defaultLegacyDefaultsURL,
+                  preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests)
     }
 
     /// Injection-friendly initializer used by tests and by the convenience initializer above.
@@ -352,7 +360,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   timerScheduler: timerScheduler,
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: AlwaysActiveUserSessionProvider(),
-                  legacyDefaultsURL: legacyDefaultsURL)
+                  legacyDefaultsURL: legacyDefaultsURL,
+                  preflightsPhotoAccessWhenScheduling: true)
     }
 
     init(photoManager: PhotoManaging,
@@ -364,7 +373,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
-         legacyDefaultsURL: URL? = nil) {
+         legacyDefaultsURL: URL? = nil,
+         preflightsPhotoAccessWhenScheduling: Bool = true) {
         self.photoManager = photoManager
         self.defaults = defaults
         self.historyLogger = historyLogger
@@ -374,6 +384,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.timerScheduler = timerScheduler
         self.screenSleepStateProvider = screenSleepStateProvider
         self.activeUserSessionProvider = activeUserSessionProvider
+        self.preflightsPhotoAccessWhenScheduling = preflightsPhotoAccessWhenScheduling
         if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
@@ -393,6 +404,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Preferences", isDirectory: true)
             .appendingPathComponent(legacyDefaultsFilename)
+    }
+
+    // Not ideal, but this will allow the permission tests to run without generating an actual request popup
+    private static var isRunningUnitTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     private static func storedFrequencyRawValue(defaults: KeyValueStoring, legacyDefaultsURL: URL?) -> String? {
@@ -441,14 +457,16 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
         }
-        switch photoManager.requestPhotoAccessIfNeeded() {
-        case .ready, .waitingForAuthorization:
-            break
-        case .permissionDenied:
-            debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
-            notifier.notifyPhotoLibraryPermissionDenied()
-        case .unavailable:
-            debugLog("WallpaperCycleController: Photos authorization unavailable while configuring schedule.")
+        if preflightsPhotoAccessWhenScheduling {
+            switch photoManager.requestPhotoAccessIfNeeded() {
+            case .ready, .waitingForAuthorization:
+                break
+            case .permissionDenied:
+                debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
+                notifier.notifyPhotoLibraryPermissionDenied()
+            case .unavailable:
+                debugLog("WallpaperCycleController: Photos authorization unavailable while configuring schedule.")
+            }
         }
 
         switch frequency {
