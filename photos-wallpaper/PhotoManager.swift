@@ -24,6 +24,13 @@ enum PhotoAssetsLookupResult {
     case unavailable
 }
 
+enum PhotoAccessPreflightResult {
+    case ready
+    case waitingForAuthorization
+    case permissionDenied
+    case unavailable
+}
+
 enum PhotosWallpaperAlbumError: LocalizedError {
     case albumUnavailable
     case assetCouldNotBeAdded
@@ -47,7 +54,7 @@ protocol PhotoManaging: AnyObject {
     var photoAuthorizationDidChange: (() -> Void)? { get set }
 
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
-    func requestPhotoAccessIfNeeded()
+    func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
@@ -392,7 +399,7 @@ final class PhotoManager: PhotoManaging {
         case .notDetermined:
             // Do not fetch before the user answers the system prompt. A pending permission request is
             // different from an empty library and should not trigger a "no photos" notification.
-            requestPhotoAccessIfNeeded()
+            _ = requestPhotoAccessIfNeeded()
             debugLog("PhotoManager: waiting for Photos authorization before fetching assets.")
             return .waitingForAuthorization
         case .denied, .restricted:
@@ -406,9 +413,19 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    func requestPhotoAccessIfNeeded() {
-        guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined else { return }
-        guard !hasRequestedPhotoAccess else { return }
+    func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult {
+        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        case .authorized, .limited:
+            return .ready
+        case .notDetermined:
+            break
+        case .denied, .restricted:
+            return .permissionDenied
+        @unknown default:
+            return .unavailable
+        }
+
+        guard !hasRequestedPhotoAccess else { return .waitingForAuthorization }
         hasRequestedPhotoAccess = true
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
@@ -416,6 +433,7 @@ final class PhotoManager: PhotoManaging {
                 self?.photoAuthorizationDidChange?()
             }
         }
+        return .waitingForAuthorization
     }
 
     /// Returns every image asset the app is currently allowed to see.

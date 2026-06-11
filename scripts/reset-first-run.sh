@@ -55,6 +55,8 @@ else
     done
 fi
 
+tccutil reset Photos com.rosehillsolutions.photoswallpaper
+
 echo
 echo "Start at Login cannot be removed reliably from a shell script on all macOS versions."
 echo "Check System Settings > General > Login Items & Extensions and remove Photos Wallpaper if present."

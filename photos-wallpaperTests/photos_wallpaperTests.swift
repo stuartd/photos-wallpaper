@@ -228,6 +228,30 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
+    @Test func selectingScheduledFrequencyNotifiesWhenPhotoAccessWasDenied() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        photoManager.photoAccessPreflightResult = .permissionDenied
+        let notifier = FakeWallpaperCycleNotifier()
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.frequency = .day
+
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+        #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
     @Test func migratesSavedFrequencyFromLegacyPreferencesWhenCurrentDefaultsAreEmpty() throws {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -1210,6 +1234,7 @@ private final class FakePhotoManager: PhotoManaging {
     private let assetNames: [ObjectIdentifier: String]
     private let completesImageRequestsImmediately: Bool
     var photoSelectionOverride: PhotoSelectionResult?
+    var photoAccessPreflightResult: PhotoAccessPreflightResult = .ready
     private var pendingImageCompletions: [(NSImage?) -> Void] = []
     var photoAuthorizationDidChange: (() -> Void)?
     private(set) var getRandomPhotosCallCount = 0
@@ -1257,8 +1282,9 @@ private final class FakePhotoManager: PhotoManaging {
         return .photos(assets)
     }
 
-    func requestPhotoAccessIfNeeded() {
+    func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult {
         requestPhotoAccessCallCount += 1
+        return photoAccessPreflightResult
     }
 
     func displayName(for asset: PHAsset) -> String {

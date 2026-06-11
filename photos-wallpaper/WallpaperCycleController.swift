@@ -441,7 +441,15 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
         }
-        photoManager.requestPhotoAccessIfNeeded()
+        switch photoManager.requestPhotoAccessIfNeeded() {
+        case .ready, .waitingForAuthorization:
+            break
+        case .permissionDenied:
+            debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
+            notifier.notifyPhotoLibraryPermissionDenied()
+        case .unavailable:
+            debugLog("WallpaperCycleController: Photos authorization unavailable while configuring schedule.")
+        }
 
         switch frequency {
         case .onLogin:
