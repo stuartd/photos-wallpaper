@@ -44,6 +44,8 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
 }
 
 protocol PhotoManaging: AnyObject {
+    var photoAuthorizationDidChange: (() -> Void)? { get set }
+
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
@@ -71,6 +73,7 @@ final class PhotoManager: PhotoManaging {
     private var allPhotos: PHFetchResult<PHAsset>?
     private var hasRequestedPhotoAccess = false
     private var activeWallpaperFilenamesByScreen = [String: String]()
+    var photoAuthorizationDidChange: (() -> Void)?
 
     init(wallpaperManager: WallpaperManaging = WallpaperManager()) {
         self.wallpaperManager = wallpaperManager
@@ -408,6 +411,9 @@ final class PhotoManager: PhotoManaging {
         hasRequestedPhotoAccess = true
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
+            DispatchQueue.main.async { [weak self] in
+                self?.photoAuthorizationDidChange?()
+            }
         }
     }
 

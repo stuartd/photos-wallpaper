@@ -476,6 +476,39 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
+    @Test func triggerNowRetriesAfterPhotosAuthorizationChanges() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager(photoSelectionOverride: .waitingForAuthorization)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+
+        photoManager.photoSelectionOverride = nil
+        photoManager.photoAuthorizationDidChange?()
+        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
+
+        #expect(didAssignWallpaper)
+        #expect(photoManager.getRandomPhotosCallCount == 2)
+    }
+
     @Test func triggerNowNotifiesEveryTimePhotoLibraryPermissionIsDenied() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -1134,6 +1167,7 @@ private final class FakePhotoManager: PhotoManaging {
     private let completesImageRequestsImmediately: Bool
     var photoSelectionOverride: PhotoSelectionResult?
     private var pendingImageCompletions: [(NSImage?) -> Void] = []
+    var photoAuthorizationDidChange: (() -> Void)?
     private(set) var getRandomPhotosCallCount = 0
     private(set) var requestedPhotoCount = 0
     private(set) var requestedAssets: [PHAsset] = []

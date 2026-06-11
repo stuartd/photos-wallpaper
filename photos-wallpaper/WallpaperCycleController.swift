@@ -314,6 +314,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
     private var hasLoadedInitialFrequency = false
+    private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
 
     /// Production initializer used by the app.
     convenience init() {
@@ -378,6 +379,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             self.frequency = f
         } else {
             self.frequency = nil
+        }
+        photoManager.photoAuthorizationDidChange = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.retryPendingAuthorizationCycleIfNeeded()
+            }
         }
         hasLoadedInitialFrequency = true
         scheduleCycleTrigger(runLoginCycle: true)
@@ -525,6 +531,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             assets = selectedAssets
         case .waitingForAuthorization:
             debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
+            pendingAuthorizationRetryTrigger = trigger
             finishCycle()
             return
         case .permissionDenied:
@@ -575,6 +582,13 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         }
+    }
+
+    private func retryPendingAuthorizationCycleIfNeeded() {
+        guard let trigger = pendingAuthorizationRetryTrigger else { return }
+        pendingAuthorizationRetryTrigger = nil
+        debugLog("WallpaperCycleController: retrying wallpaper cycle after Photos authorization changed.")
+        tick(trigger: trigger)
     }
 
     private enum UnavailablePhotosReason {
