@@ -28,6 +28,7 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     override init() {
         super.init()
         center.delegate = self
+        logNotificationSettings(context: "startup")
     }
 
     func notifyNoPhotosAvailable() {
@@ -40,7 +41,7 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = "Photos Access Needed"
-            alert.informativeText = "Photos Wallpaper does not have permission to read your Photos library. Enable access in System Settings > Privacy & Security > Photos, then try again."
+            alert.informativeText = "Photos Wallpaper does not have permission to read your Photos library.\n\nEnable access in System Settings > Privacy & Security > Photos, then try again."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
             NSApp.activate(ignoringOtherApps: true)
@@ -51,14 +52,14 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     private func queueNotification(identifier: String, title: String, body: String) {
         Task {
             do {
+                await logNotificationSettings(context: "before requesting authorization for \(identifier)")
                 let granted = try await center.requestAuthorization(options: [.alert, .sound])
                 guard granted else {
                     debugLog("UserNotificationWallpaperCycleNotifier: notification authorization was not granted.")
                     return
                 }
 
-                let settings = await center.notificationSettings()
-                debugLog("UserNotificationWallpaperCycleNotifier: notification authorization status is \(settings.authorizationStatus.rawValue), alert setting is \(settings.alertSetting.rawValue).")
+                await logNotificationSettings(context: "after requesting authorization for \(identifier)")
 
                 let content = UNMutableNotificationContent()
                 content.title = title
@@ -73,6 +74,37 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
             } catch {
                 debugLog("UserNotificationWallpaperCycleNotifier: failed to queue notification \(identifier): \(error).")
             }
+        }
+    }
+
+    private func logNotificationSettings(context: String) {
+        Task {
+            await logNotificationSettings(context: context)
+        }
+    }
+
+    private func logNotificationSettings(context: String) async {
+        let settings = await center.notificationSettings()
+        debugLog("UserNotificationWallpaperCycleNotifier: notification settings \(context): authorization=\(Self.description(for: settings.authorizationStatus)), alerts=\(Self.description(for: settings.alertSetting)), sounds=\(Self.description(for: settings.soundSetting)).")
+    }
+
+    private static func description(for status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown(\(status.rawValue))"
+        }
+    }
+
+    private static func description(for setting: UNNotificationSetting) -> String {
+        switch setting {
+        case .notSupported: return "notSupported"
+        case .disabled: return "disabled"
+        case .enabled: return "enabled"
+        @unknown default: return "unknown(\(setting.rawValue))"
         }
     }
 
