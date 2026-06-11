@@ -295,7 +295,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             // Persist the newly selected frequency so the next launch resumes the same schedule.
             defaults.set(frequency?.rawValue, forKey: Self.defaultsKey)
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
-            scheduleCycleTrigger(runLoginCycle: false)
+            scheduleCycleTrigger()
         }
     }
 
@@ -386,7 +386,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
         }
         hasLoadedInitialFrequency = true
-        scheduleCycleTrigger(runLoginCycle: true)
+        scheduleCycleTrigger()
     }
 
     private static var defaultLegacyDefaultsURL: URL? {
@@ -431,7 +431,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     }
 
     /// Replaces any existing schedule trigger with one based on the current frequency.
-    private func scheduleCycleTrigger(runLoginCycle: Bool) {
+    private func scheduleCycleTrigger() {
         timer?.invalidate()
         timer = nil
         wakeObservation?.invalidate()
@@ -444,12 +444,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
         switch frequency {
         case .onLogin:
-            guard runLoginCycle else {
-                debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
-                return
-            }
-            debugLog("WallpaperCycleController: running one wallpaper cycle for login.")
-            tick(trigger: .login)
+            debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
         case .onWakeup:
             debugLog("WallpaperCycleController: observing system wake notifications.")
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
@@ -492,6 +487,15 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         var requiresActiveUserSession: Bool {
             self != .manual
         }
+
+        var logDescription: String {
+            switch self {
+            case .manual: return "manual trigger"
+            case .login: return "login trigger"
+            case .wake: return "wake trigger"
+            case .scheduled: return "scheduled trigger"
+            }
+        }
     }
 
     /// Executes one full wallpaper refresh across every connected display.
@@ -500,7 +504,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
     private func tick(trigger: WallpaperCycleTrigger) {
         if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
-            debugLog("WallpaperCycleController: skipping automatic cycle because this app's user session is not the active console session.")
+            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
             return
         }
         if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {

@@ -7,7 +7,11 @@ echo "Resetting Photos Wallpaper first-run state..."
 
 echo
 echo "Clearing matching defaults domains..."
-mapfile -t DOMAINS < <(matching_defaults_domains | sort -u)
+DOMAINS=()
+while IFS= read -r domain; do
+    [[ -z "${domain}" ]] && continue
+    DOMAINS+=("${domain}")
+done < <(matching_defaults_domains | sort -u)
 if ((${#DOMAINS[@]} == 0)); then
     echo "No matching defaults domains found."
 else
