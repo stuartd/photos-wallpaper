@@ -185,6 +185,49 @@ struct PhotosWallpaperTests {
         #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
+    @Test func newUserStartsWithNoScheduleAndDoesNotRequestPhotoAccess() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+
+        _ = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        #expect(photoManager.requestPhotoAccessCallCount == 0)
+    }
+
+    @Test func selectingScheduledFrequencyRequestsPhotoAccessWithoutChangingWallpaper() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.frequency = .day
+
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
     @Test func migratesSavedFrequencyFromLegacyPreferencesWhenCurrentDefaultsAreEmpty() throws {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -1170,6 +1213,7 @@ private final class FakePhotoManager: PhotoManaging {
     private var pendingImageCompletions: [(NSImage?) -> Void] = []
     var photoAuthorizationDidChange: (() -> Void)?
     private(set) var getRandomPhotosCallCount = 0
+    private(set) var requestPhotoAccessCallCount = 0
     private(set) var requestedPhotoCount = 0
     private(set) var requestedAssets: [PHAsset] = []
     private(set) var requestedSizes: [CGSize] = []
@@ -1211,6 +1255,10 @@ private final class FakePhotoManager: PhotoManaging {
             assets.append(contentsOf: Array(repeating: fallbackAsset, count: count - assets.count))
         }
         return .photos(assets)
+    }
+
+    func requestPhotoAccessIfNeeded() {
+        requestPhotoAccessCallCount += 1
     }
 
     func displayName(for asset: PHAsset) -> String {

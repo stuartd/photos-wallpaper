@@ -47,6 +47,7 @@ protocol PhotoManaging: AnyObject {
     var photoAuthorizationDidChange: (() -> Void)? { get set }
 
     func getRandomPhotos(count: Int) -> PhotoSelectionResult
+    func requestPhotoAccessIfNeeded()
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
@@ -405,7 +406,7 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    private func requestPhotoAccessIfNeeded() {
+    func requestPhotoAccessIfNeeded() {
         guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined else { return }
         guard !hasRequestedPhotoAccess else { return }
         hasRequestedPhotoAccess = true
