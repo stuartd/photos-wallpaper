@@ -269,10 +269,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     @Published var frequency: CycleFrequency? {
         didSet {
+            guard hasLoadedInitialFrequency else { return }
             // Persist the newly selected frequency so the next launch resumes the same schedule.
             defaults.set(frequency?.rawValue, forKey: Self.defaultsKey)
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
-            rescheduleTimer()
+            scheduleCycleTrigger(runLoginCycle: false)
         }
     }
 
@@ -289,6 +290,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
+    private var hasLoadedInitialFrequency = false
 
     /// Production initializer used by the app.
     convenience init() {
@@ -350,6 +352,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         } else {
             self.frequency = nil
         }
+        hasLoadedInitialFrequency = true
+        scheduleCycleTrigger(runLoginCycle: true)
     }
 
     private static var defaultLegacyDefaultsURL: URL? {
@@ -394,7 +398,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     }
 
     /// Replaces any existing schedule trigger with one based on the current frequency.
-    private func scheduleCycleTrigger() {
+    private func scheduleCycleTrigger(runLoginCycle: Bool) {
         timer?.invalidate()
         timer = nil
         wakeObservation?.invalidate()
@@ -407,7 +411,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
         switch frequency {
         case .onLogin:
-            debugLog("WallpaperCycleController: scheduling one wallpaper cycle for login.")
+            guard runLoginCycle else {
+                debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
+                return
+            }
+            debugLog("WallpaperCycleController: running one wallpaper cycle for login.")
             tick(trigger: .login)
         case .onWakeup:
             debugLog("WallpaperCycleController: observing system wake notifications.")
@@ -436,10 +444,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 self?.tick(trigger: .scheduled)
             }
         }
-    }
-
-    private func rescheduleTimer() {
-        scheduleCycleTrigger()
     }
 
     private enum WallpaperCycleTrigger {
