@@ -582,7 +582,8 @@ struct PhotosWallpaperTests {
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
             wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler,
-            screenSleepStateProvider: screenSleepStateProvider
+            screenSleepStateProvider: screenSleepStateProvider,
+            activeUserSessionProvider: FakeActiveUserSessionProvider()
         )
         controller.frequency = .minute
 
@@ -611,7 +612,8 @@ struct PhotosWallpaperTests {
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
             wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler,
-            screenSleepStateProvider: screenSleepStateProvider
+            screenSleepStateProvider: screenSleepStateProvider,
+            activeUserSessionProvider: FakeActiveUserSessionProvider()
         )
         controller.frequency = .minute
 
@@ -623,6 +625,100 @@ struct PhotosWallpaperTests {
 
         #expect(photoManager.getRandomPhotosCallCount == 1)
         #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func scheduledCycleSkipsWhenAppUserSessionIsNotActive() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func scheduledCycleRunsAgainWhenAppUserSessionBecomesActive() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        activeUserSessionProvider.appOwnsActiveConsoleSession = true
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func wakeCycleSkipsWhenAppUserSessionIsNotActive() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onWakeup.rawValue
+        let scheduler = FakeTimerScheduler()
+        let wakeObserver = FakeWakeEventObserver()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        _ = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: wakeObserver,
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
+        )
+
+        wakeObserver.fireWakeEvent()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
     @Test func manualCycleStillRunsWhileScreensAreMarkedAsleep() async {
@@ -643,7 +739,37 @@ struct PhotosWallpaperTests {
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
             wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler,
-            screenSleepStateProvider: screenSleepStateProvider
+            screenSleepStateProvider: screenSleepStateProvider,
+            activeUserSessionProvider: FakeActiveUserSessionProvider()
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func manualCycleStillRunsWhenAppUserSessionIsNotActive() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
         )
 
         controller.triggerNow()
@@ -1318,6 +1444,14 @@ private final class FakeScreenSleepStateProvider: ScreenSleepStateProviding {
 
     init(screensAreAsleep: Bool = false) {
         self.screensAreAsleep = screensAreAsleep
+    }
+}
+
+private final class FakeActiveUserSessionProvider: ActiveUserSessionProviding {
+    var appOwnsActiveConsoleSession: Bool
+
+    init(appOwnsActiveConsoleSession: Bool = true) {
+        self.appOwnsActiveConsoleSession = appOwnsActiveConsoleSession
     }
 }
 

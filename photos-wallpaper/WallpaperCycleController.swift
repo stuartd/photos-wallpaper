@@ -3,6 +3,7 @@ import SwiftUI
 import AppKit
 import Combine
 import Photos
+import SystemConfiguration
 import UserNotifications
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
@@ -113,6 +114,10 @@ protocol WakeEventObserving {
     var screensAreAsleep: Bool { get }
 }
 
+@MainActor protocol ActiveUserSessionProviding: AnyObject {
+    var appOwnsActiveConsoleSession: Bool { get }
+}
+
 final class NotificationWakeEventObservation: WakeEventObservation {
     private let center: NotificationCenter
     private var token: NSObjectProtocol?
@@ -172,6 +177,23 @@ struct AppKitWakeEventObserver: WakeEventObserving {
         }
         tokens.append(token)
     }
+}
+
+@MainActor final class SystemActiveUserSessionProvider: ActiveUserSessionProviding {
+    var appOwnsActiveConsoleSession: Bool {
+        var consoleUID = uid_t.max
+        var consoleGID = gid_t.max
+        guard let consoleUser = SCDynamicStoreCopyConsoleUser(nil, &consoleUID, &consoleGID) as String?,
+              consoleUser != "loginwindow",
+              consoleUID == getuid() else {
+            return false
+        }
+        return true
+    }
+}
+
+@MainActor final class AlwaysActiveUserSessionProvider: ActiveUserSessionProviding {
+    var appOwnsActiveConsoleSession: Bool { true }
 }
 
 protocol TimerScheduling {
@@ -287,6 +309,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
     private let screenSleepStateProvider: ScreenSleepStateProviding
+    private let activeUserSessionProvider: ActiveUserSessionProviding
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
@@ -306,6 +329,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   wakeEventObserver: AppKitWakeEventObserver(),
                   timerScheduler: FoundationTimerScheduler(),
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
+                  activeUserSessionProvider: SystemActiveUserSessionProvider(),
                   legacyDefaultsURL: Self.defaultLegacyDefaultsURL)
     }
 
@@ -326,6 +350,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   wakeEventObserver: wakeEventObserver,
                   timerScheduler: timerScheduler,
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
+                  activeUserSessionProvider: AlwaysActiveUserSessionProvider(),
                   legacyDefaultsURL: legacyDefaultsURL)
     }
 
@@ -337,6 +362,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          wakeEventObserver: WakeEventObserving,
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
+         activeUserSessionProvider: ActiveUserSessionProviding,
          legacyDefaultsURL: URL? = nil) {
         self.photoManager = photoManager
         self.defaults = defaults
@@ -346,6 +372,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.wakeEventObserver = wakeEventObserver
         self.timerScheduler = timerScheduler
         self.screenSleepStateProvider = screenSleepStateProvider
+        self.activeUserSessionProvider = activeUserSessionProvider
         if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
@@ -455,6 +482,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         var shouldAlwaysNotifyUnavailablePhotos: Bool {
             self == .manual
         }
+
+        var requiresActiveUserSession: Bool {
+            self != .manual
+        }
     }
 
     /// Executes one full wallpaper refresh across every connected display.
@@ -462,6 +493,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     /// The method stays on the main actor because it touches AppKit screen objects and because the
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
     private func tick(trigger: WallpaperCycleTrigger) {
+        if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
+            debugLog("WallpaperCycleController: skipping automatic cycle because this app's user session is not the active console session.")
+            return
+        }
         if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {
             debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
             return
