@@ -129,6 +129,7 @@ protocol KeyValueStoring: AnyObject {
     func string(forKey defaultName: String) -> String?
     func bool(forKey defaultName: String) -> Bool
     func integer(forKey defaultName: String) -> Int
+    func double(forKey defaultName: String) -> Double
     func set(_ value: Any?, forKey defaultName: String)
 }
 
@@ -325,6 +326,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 ///   dependencies.
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
+    private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
 
     @Published var frequency: CycleFrequency? {
@@ -332,6 +334,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             guard hasLoadedInitialFrequency else { return }
             // Persist the newly selected frequency so the next launch resumes the same schedule.
             defaults.set(frequency?.rawValue, forKey: Self.defaultsKey)
+            if frequency != oldValue {
+                clearStoredScheduledCycleDueAt()
+            }
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
             scheduleCycleTrigger()
         }
@@ -354,6 +359,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var pendingImageRequests = 0
     private var hasLoadedInitialFrequency = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
+    private var nextScheduledCycleDueAt: Date?
 
     /// Production initializer used by the app.
     convenience init() {
@@ -486,6 +492,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeObservation = nil
 
         guard let frequency else {
+            clearStoredScheduledCycleDueAt()
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
         }
@@ -503,8 +510,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
         switch frequency {
         case .onLogin:
+            clearStoredScheduledCycleDueAt()
             debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
         case .onWakeup:
+            clearStoredScheduledCycleDueAt()
             debugLog("WallpaperCycleController: observing system wake notifications.")
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
@@ -512,13 +521,51 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         case .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
+            ensureStoredScheduledCycleDueAt(for: frequency)
+            observeWakeForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
+            runDeferredScheduledCycleIfNeeded()
             
         #if DEBUG
         case .oneSecond:
+            ensureStoredScheduledCycleDueAt(for: frequency)
+            observeWakeForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
+            runDeferredScheduledCycleIfNeeded()
         #endif
         }
+    }
+
+    private func observeWakeForDeferredScheduledCycle() {
+        wakeObservation = wakeEventObserver.observeWake { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.runDeferredScheduledCycleIfNeeded()
+            }
+        }
+    }
+
+    private func ensureStoredScheduledCycleDueAt(for frequency: CycleFrequency) {
+        guard let seconds = frequency.seconds else {
+            clearStoredScheduledCycleDueAt()
+            return
+        }
+
+        let storedTimestamp = defaults.double(forKey: Self.nextScheduledCycleDueAtDefaultsKey)
+        if storedTimestamp > 0 {
+            nextScheduledCycleDueAt = Date(timeIntervalSince1970: storedTimestamp)
+        } else {
+            storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        }
+    }
+
+    private func storeNextScheduledCycleDueAt(_ date: Date) {
+        nextScheduledCycleDueAt = date
+        defaults.set(date.timeIntervalSince1970, forKey: Self.nextScheduledCycleDueAtDefaultsKey)
+    }
+
+    private func clearStoredScheduledCycleDueAt() {
+        nextScheduledCycleDueAt = nil
+        defaults.set(nil, forKey: Self.nextScheduledCycleDueAtDefaultsKey)
     }
 
     private func scheduleTimerTrigger(for frequency: CycleFrequency) {
@@ -564,16 +611,19 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private func tick(trigger: WallpaperCycleTrigger) {
         if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
             debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
+            deferScheduledCycleIfNeeded(trigger: trigger)
             return
         }
         if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {
             debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
+            deferScheduledCycleIfNeeded(trigger: trigger)
             return
         }
         guard !isCycleInProgress else {
             debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
             return
         }
+        clearDeferredScheduledCycleIfNeeded(trigger: trigger)
         isCycleInProgress = true
         debugLog("WallpaperCycleController: starting wallpaper cycle.")
         let screens = screenProvider.screens
@@ -645,6 +695,36 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         }
+    }
+
+    private func deferScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
+        guard trigger == .scheduled else { return }
+        storeNextScheduledCycleDueAt(Date())
+        debugLog("WallpaperCycleController: deferred scheduled cycle until the app is active again.")
+    }
+
+    private func clearDeferredScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
+        guard trigger == .scheduled else { return }
+        guard let seconds = frequency?.seconds else {
+            clearStoredScheduledCycleDueAt()
+            return
+        }
+        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+    }
+
+    private func runDeferredScheduledCycleIfNeeded() {
+        guard let dueAt = nextScheduledCycleDueAt else { return }
+        guard Date() >= dueAt else { return }
+        guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but this app's user session is not active.")
+            return
+        }
+        guard !screenSleepStateProvider.screensAreAsleep else {
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but the screens are asleep.")
+            return
+        }
+        debugLog("WallpaperCycleController: running deferred scheduled cycle.")
+        tick(trigger: .scheduled)
     }
 
     private func retryPendingAuthorizationCycleIfNeeded() {
