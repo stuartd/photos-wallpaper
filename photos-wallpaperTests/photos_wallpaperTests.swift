@@ -1106,6 +1106,44 @@ struct PhotosWallpaperTests {
         #expect(text == "")
     }
 
+    @Test func runtimeLoggerWritesHumanReadableLocalTimestamps() async throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = AppRuntimeLogger(logURL: logURL)
+        let timestamp = Date(timeIntervalSince1970: 1_717_974_000)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = .current
+        formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss z"
+
+        logger.record("hello", timestamp: timestamp)
+        let didWriteLog = await waitForCondition {
+            (try? String(contentsOf: logURL, encoding: .utf8)) == "[\(formatter.string(from: timestamp))] hello\n"
+        }
+
+        #expect(didWriteLog)
+    }
+
+    @Test func runtimeLoggerShowsDiagnosticLogInAppWindowAndUpdatesIt() async throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = AppRuntimeLogger(logURL: logURL)
+        let timestamp = Date(timeIntervalSince1970: 1_717_974_000)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = .current
+        formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss z"
+
+        logger.openRuntimeLog()
+        logger.record("hello", timestamp: timestamp)
+
+        let didUpdateWindow = await waitForCondition {
+            logger.displayedRuntimeLogTextForTesting == "[\(formatter.string(from: timestamp))] hello\n"
+        }
+
+        #expect(didUpdateWindow)
+    }
+
     @Test func wallpaperHistoryLoggerClearsPreviousSessionLogOnStartup() throws {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
