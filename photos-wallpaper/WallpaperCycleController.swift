@@ -328,6 +328,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let defaultsKey = "cycleFrequency"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
+    private static let wakeCatchUpDelay: TimeInterval = 5 * 60
 
     @Published var frequency: CycleFrequency? {
         didSet {
@@ -349,6 +350,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let screenProvider: ScreenProviding
     private let timerScheduler: TimerScheduling
     private var timer: CancellableTimer?
+    private var wakeCatchUpTimer: CancellableTimer?
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
     private let screenSleepStateProvider: ScreenSleepStateProviding
@@ -360,6 +362,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var hasLoadedInitialFrequency = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
     private var nextScheduledCycleDueAt: Date?
+    private var wakeGraceEndsAt: Date?
 
     /// Production initializer used by the app.
     convenience init() {
@@ -488,6 +491,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private func scheduleCycleTrigger() {
         timer?.invalidate()
         timer = nil
+        wakeCatchUpTimer?.invalidate()
+        wakeCatchUpTimer = nil
+        wakeGraceEndsAt = nil
         wakeObservation?.invalidate()
         wakeObservation = nil
 
@@ -539,7 +545,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private func observeWakeForDeferredScheduledCycle() {
         wakeObservation = wakeEventObserver.observeWake { [weak self] in
             Task { @MainActor [weak self] in
-                self?.runDeferredScheduledCycleIfNeeded()
+                self?.scheduleDeferredScheduledCycleAfterWakeIfNeeded()
             }
         }
     }
@@ -617,6 +623,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {
             debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
             deferScheduledCycleIfNeeded(trigger: trigger)
+            return
+        }
+        if shouldDelayScheduledCycleForWakeGrace(trigger: trigger) {
+            scheduleWakeCatchUpTimer()
             return
         }
         guard !isCycleInProgress else {
@@ -705,6 +715,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private func clearDeferredScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
         guard trigger == .scheduled else { return }
+        wakeCatchUpTimer?.invalidate()
+        wakeCatchUpTimer = nil
+        wakeGraceEndsAt = nil
         guard let seconds = frequency?.seconds else {
             clearStoredScheduledCycleDueAt()
             return
@@ -725,6 +738,43 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         debugLog("WallpaperCycleController: running deferred scheduled cycle.")
         tick(trigger: .scheduled)
+    }
+
+    private func scheduleDeferredScheduledCycleAfterWakeIfNeeded() {
+        guard let dueAt = nextScheduledCycleDueAt else { return }
+        guard Date() >= dueAt else { return }
+        guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake but this app's user session is not active.")
+            return
+        }
+        guard !screenSleepStateProvider.screensAreAsleep else {
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake but the screens are asleep.")
+            return
+        }
+        wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
+        scheduleWakeCatchUpTimer()
+    }
+
+    private func shouldDelayScheduledCycleForWakeGrace(trigger: WallpaperCycleTrigger) -> Bool {
+        guard trigger == .scheduled,
+              let graceEndsAt = wakeGraceEndsAt,
+              Date() < graceEndsAt else {
+            return false
+        }
+        debugLog("WallpaperCycleController: delaying overdue scheduled cycle until wake grace period ends.")
+        return true
+    }
+
+    private func scheduleWakeCatchUpTimer() {
+        guard wakeCatchUpTimer == nil else { return }
+        debugLog("WallpaperCycleController: scheduling overdue wallpaper catch-up after wake grace period.")
+        wakeCatchUpTimer = timerScheduler.scheduledTimer(interval: Self.wakeCatchUpDelay, repeats: false) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.wakeCatchUpTimer = nil
+                self?.wakeGraceEndsAt = nil
+                self?.runDeferredScheduledCycleIfNeeded()
+            }
+        }
     }
 
     private func retryPendingAuthorizationCycleIfNeeded() {
