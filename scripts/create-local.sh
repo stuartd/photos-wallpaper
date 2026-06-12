@@ -52,7 +52,7 @@ ditto "$BUILT_APP" "$OUTPUT_APP"
 
 echo
 echo "Creating DMG at $OUTPUT_DMG..."
-"$SCRIPT_DIR/create-dmg.sh" "$OUTPUT_APP" "$OUTPUT_DMG" "$OUTPUT_DIR/photos-wallpaper-dmg-staging"
+"$SCRIPT_DIR/_create-dmg.sh" "$OUTPUT_APP" "$OUTPUT_DMG" "$OUTPUT_DIR/photos-wallpaper-dmg-staging"
 
 echo
 echo "Release artifacts:"
