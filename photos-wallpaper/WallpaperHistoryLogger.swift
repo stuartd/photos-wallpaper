@@ -154,6 +154,20 @@ final class BoundedLogFile {
     }
 }
 
+private enum AppLogStorage {
+    static func directoryURL(fileManager: FileManager) -> URL {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return fileManager.temporaryDirectory
+                .appendingPathComponent("photos-wallpaper-tests-\(getpid())", isDirectory: true)
+                .appendingPathComponent("photos-wallpaper", isDirectory: true)
+        }
+
+        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.homeDirectoryForCurrentUser
+        return applicationSupport.appendingPathComponent("photos-wallpaper", isDirectory: true)
+    }
+}
+
 /// Shows plain-text app logs in a read-only window owned by Photos Wallpaper.
 final class PlainTextLogWindow {
     private let title: String
@@ -314,9 +328,7 @@ final class AppRuntimeLogger {
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.runtime-log")
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
-        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.homeDirectoryForCurrentUser
-        let directoryURL = applicationSupport.appendingPathComponent("photos-wallpaper", isDirectory: true)
+        let directoryURL = AppLogStorage.directoryURL(fileManager: fileManager)
         let logURL = directoryURL.appendingPathComponent("runtime.log")
         self.init(logURL: logURL, fileManager: fileManager, maxLogSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
     }
@@ -405,9 +417,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let historyWindow = PlainTextLogWindow(title: "Wallpaper History")
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
-        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.homeDirectoryForCurrentUser
-        let directoryURL = applicationSupport.appendingPathComponent("photos-wallpaper", isDirectory: true)
+        let directoryURL = AppLogStorage.directoryURL(fileManager: fileManager)
         let logURL = directoryURL.appendingPathComponent("wallpaper-history.log")
         self.init(logURL: logURL, fileManager: fileManager, maxLogSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
     }

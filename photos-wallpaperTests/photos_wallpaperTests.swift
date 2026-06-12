@@ -834,6 +834,48 @@ struct PhotosWallpaperTests {
         #expect(photoManager.getRandomPhotosCallCount == 1)
     }
 
+    @Test func manualCycleCancelsDeferredScheduledWakeCatchUp() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let wakeObserver = FakeWakeEventObserver()
+        let photoManager = FakePhotoManager()
+        let screenSleepStateProvider = FakeScreenSleepStateProvider(screensAreAsleep: true)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: wakeObserver,
+            timerScheduler: scheduler,
+            screenSleepStateProvider: screenSleepStateProvider,
+            activeUserSessionProvider: FakeActiveUserSessionProvider()
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        screenSleepStateProvider.screensAreAsleep = false
+        wakeObserver.fireWakeEvent()
+        await Task.yield()
+
+        #expect(scheduler.scheduledIntervals == [60, 5 * 60])
+        let wakeCatchUpTimer = scheduler.createdTimers.last
+
+        controller.triggerNow()
+        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
+        await Task.yield()
+
+        #expect(didAssignWallpaper)
+        #expect(wakeCatchUpTimer?.invalidateCallCount == 1)
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+    }
+
     @Test func scheduledCycleRunsAgainAfterScreensWake() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()

@@ -692,6 +692,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 if let image = image {
                     debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
                     if photoManager.setImageAsWallpaper(image, for: screen) {
+                        Task { @MainActor [weak self] in
+                            self?.clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: trigger)
+                        }
                         // Move filename lookup off the main thread; no caching.
                         DispatchQueue.global(qos: .userInitiated).async {
                             let photoName = photoManager.displayName(for: asset)
@@ -706,6 +709,18 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 }
             }
         }
+    }
+
+    private func clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: WallpaperCycleTrigger) {
+        guard trigger == .manual,
+              let seconds = frequency?.seconds else {
+            return
+        }
+        wakeCatchUpTimer?.invalidate()
+        wakeCatchUpTimer = nil
+        wakeGraceEndsAt = nil
+        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        debugLog("WallpaperCycleController: cancelled deferred scheduled cycle after manual wallpaper change.")
     }
 
     private func deferScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
