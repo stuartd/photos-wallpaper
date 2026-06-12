@@ -17,20 +17,46 @@ if ((${#DOMAINS[@]} == 0)); then
 else
     printf '%s\n' "${DOMAINS[@]}" | while read -r domain; do
         [[ -z "${domain}" ]] && continue
-        if defaults read "${domain}" >/dev/null 2>&1; then
-            defaults delete "${domain}" >/dev/null 2>&1 || true
-            echo "Deleted defaults domain: ${domain}"
-        fi
+        defaults delete "${domain}" >/dev/null 2>&1 || true
+        echo "Deleted defaults domain if present: ${domain}"
     done
 fi
 
 echo
+echo "Removing preference plist files..."
+for domain in "${DOMAINS[@]}"; do
+    [[ -z "${domain}" ]] && continue
+    for prefs_dir in \
+        "${HOME}/Library/Preferences" \
+        "${HOME}/Library/Containers/${domain}/Data/Library/Preferences"
+    do
+        prefs_file="${prefs_dir}/${domain}.plist"
+        if [[ -e "${prefs_file}" ]]; then
+            rm -f "${prefs_file}"
+            echo "Removed: ${prefs_file}"
+        fi
+    done
+done
+killall cfprefsd >/dev/null 2>&1 || true
+
+echo
 echo "Removing local logs/cache/history..."
-if [[ -d "${APP_SUPPORT_DIR}" ]]; then
-    rm -rf "${APP_SUPPORT_DIR}"
-    echo "Removed: ${APP_SUPPORT_DIR}"
-else
-    echo "Nothing to remove at: ${APP_SUPPORT_DIR}"
+APP_SUPPORT_DIRS=("${APP_SUPPORT_DIR}")
+for domain in "${DOMAINS[@]}"; do
+    [[ -z "${domain}" ]] && continue
+    APP_SUPPORT_DIRS+=("${HOME}/Library/Containers/${domain}/Data/Library/Application Support/photos-wallpaper")
+done
+
+removed_support_dir=false
+for support_dir in "${APP_SUPPORT_DIRS[@]}"; do
+    if [[ -d "${support_dir}" ]]; then
+        rm -rf "${support_dir}"
+        echo "Removed: ${support_dir}"
+        removed_support_dir=true
+    fi
+done
+if [[ "${removed_support_dir}" == false ]]; then
+    echo "No local logs/cache/history directories found."
 fi
 
 echo
