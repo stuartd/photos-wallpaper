@@ -228,6 +228,27 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
+    @Test func selectingScheduledFrequencyMarksControllerWaitingForPhotoAuthorization() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        photoManager.photoAccessPreflightResult = .waitingForAuthorization
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.frequency = .day
+
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+        #expect(controller.isWaitingForPhotoAuthorization)
+    }
+
     @Test func selectingScheduledFrequencyNotifiesWhenPhotoAccessWasDenied() {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -621,6 +642,7 @@ struct PhotosWallpaperTests {
 
         #expect(photoManager.getRandomPhotosCallCount == 1)
         #expect(photoManager.wallpaperAssignments.isEmpty)
+        #expect(controller.isWaitingForPhotoAuthorization)
 
         photoManager.photoSelectionOverride = nil
         photoManager.photoAuthorizationDidChange?()
@@ -628,6 +650,7 @@ struct PhotosWallpaperTests {
 
         #expect(didAssignWallpaper)
         #expect(photoManager.getRandomPhotosCallCount == 2)
+        #expect(!controller.isWaitingForPhotoAuthorization)
     }
 
     @Test func triggerNowNotifiesEveryTimePhotoLibraryPermissionIsDenied() async {

@@ -343,6 +343,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             scheduleCycleTrigger()
         }
     }
+    @Published private(set) var isWaitingForPhotoAuthorization = false
 
     private let photoManager: PhotoManaging
     private let defaults: KeyValueStoring
@@ -435,6 +436,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         photoManager.photoAuthorizationDidChange = { [weak self] in
             Task { @MainActor [weak self] in
+                self?.isWaitingForPhotoAuthorization = false
                 self?.retryPendingAuthorizationCycleIfNeeded()
             }
         }
@@ -505,12 +507,16 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         if preflightsPhotoAccessWhenScheduling {
             switch photoManager.requestPhotoAccessIfNeeded() {
-            case .ready, .waitingForAuthorization:
-                break
+            case .ready:
+                isWaitingForPhotoAuthorization = false
+            case .waitingForAuthorization:
+                isWaitingForPhotoAuthorization = true
             case .permissionDenied:
+                isWaitingForPhotoAuthorization = false
                 debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
                 notifier.notifyPhotoLibraryPermissionDenied()
             case .unavailable:
+                isWaitingForPhotoAuthorization = false
                 debugLog("WallpaperCycleController: Photos authorization unavailable while configuring schedule.")
             }
         }
@@ -647,6 +653,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         let assets: [PHAsset]
         switch photoManager.getRandomPhotos(count: screens.count) {
         case .photos(let selectedAssets):
+            isWaitingForPhotoAuthorization = false
             if selectedAssets.isEmpty {
                 notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: trigger)
                 finishCycle()
@@ -654,15 +661,18 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
             assets = selectedAssets
         case .waitingForAuthorization:
+            isWaitingForPhotoAuthorization = true
             debugLog("WallpaperCycleController: waiting for Photos authorization before selecting wallpapers.")
             pendingAuthorizationRetryTrigger = trigger
             finishCycle()
             return
         case .permissionDenied:
+            isWaitingForPhotoAuthorization = false
             notifyUnavailablePhotos(reason: .permissionDenied, trigger: trigger)
             finishCycle()
             return
         case .unavailable:
+            isWaitingForPhotoAuthorization = false
             notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: trigger)
             finishCycle()
             return

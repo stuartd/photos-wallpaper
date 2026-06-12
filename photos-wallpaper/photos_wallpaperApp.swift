@@ -24,6 +24,7 @@ struct photos_wallpaperApp: App {
     @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
+    @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
     private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
@@ -47,6 +48,10 @@ struct photos_wallpaperApp: App {
             .disabled(isAboutPanelOpen)
             .onAppear {
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
+            }
+            .onChange(of: cycleController.isWaitingForPhotoAuthorization) { _, isWaiting in
+                guard !isWaiting else { return }
+                promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
             }
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
@@ -113,6 +118,11 @@ struct photos_wallpaperApp: App {
     }
 
     private func promptToEnableStartAtLoginIfNeeded(for frequency: CycleFrequency?) {
+        guard !cycleController.isWaitingForPhotoAuthorization else {
+            pendingStartAtLoginPromptFrequency = frequency
+            return
+        }
+        pendingStartAtLoginPromptFrequency = nil
         DispatchQueue.main.async {
             loginItemManager.promptToEnableStartAtLogin(forSchedule: frequency?.rawValue)
         }
