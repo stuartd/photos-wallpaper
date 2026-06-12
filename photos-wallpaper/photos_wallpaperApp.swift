@@ -25,6 +25,7 @@ struct photos_wallpaperApp: App {
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
     @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
+    @State private var isStartAtLoginPromptRetryScheduled = false
     private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
@@ -120,11 +121,22 @@ struct photos_wallpaperApp: App {
     private func promptToEnableStartAtLoginIfNeeded(for frequency: CycleFrequency?) {
         guard !cycleController.isWaitingForPhotoAuthorization else {
             pendingStartAtLoginPromptFrequency = frequency
+            scheduleStartAtLoginPromptRetry()
             return
         }
         pendingStartAtLoginPromptFrequency = nil
         DispatchQueue.main.async {
             loginItemManager.promptToEnableStartAtLogin(forSchedule: frequency?.rawValue)
+        }
+    }
+
+    private func scheduleStartAtLoginPromptRetry() {
+        guard !isStartAtLoginPromptRetryScheduled else { return }
+        isStartAtLoginPromptRetryScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isStartAtLoginPromptRetryScheduled = false
+            guard let pendingStartAtLoginPromptFrequency else { return }
+            promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
         }
     }
 }
