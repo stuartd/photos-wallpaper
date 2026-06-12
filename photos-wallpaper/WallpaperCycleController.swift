@@ -329,6 +329,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
+    private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
 
     @Published var frequency: CycleFrequency? {
         didSet {
@@ -745,10 +746,12 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         guard Date() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
             debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake but this app's user session is not active.")
+            scheduleWakeReadinessRetryTimer()
             return
         }
         guard !screenSleepStateProvider.screensAreAsleep else {
             debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake but the screens are asleep.")
+            scheduleWakeReadinessRetryTimer()
             return
         }
         wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
@@ -763,6 +766,17 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         debugLog("WallpaperCycleController: delaying overdue scheduled cycle until wake grace period ends.")
         return true
+    }
+
+    private func scheduleWakeReadinessRetryTimer() {
+        guard wakeCatchUpTimer == nil else { return }
+        debugLog("WallpaperCycleController: scheduling overdue wallpaper readiness retry after wake.")
+        wakeCatchUpTimer = timerScheduler.scheduledTimer(interval: Self.wakeCatchUpReadinessRetryDelay, repeats: false) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.wakeCatchUpTimer = nil
+                self?.scheduleDeferredScheduledCycleAfterWakeIfNeeded()
+            }
+        }
     }
 
     private func scheduleWakeCatchUpTimer() {

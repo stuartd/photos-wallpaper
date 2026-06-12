@@ -966,6 +966,53 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
+    @Test func overdueScheduledCycleAfterWakeRetriesUntilAppUserSessionBecomesActive() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let wakeObserver = FakeWakeEventObserver()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: wakeObserver,
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
+        )
+        controller.frequency = .minute
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        wakeObserver.fireWakeEvent()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(scheduler.scheduledIntervals == [60, 10])
+        #expect(scheduler.scheduledRepeats == [true, false])
+
+        activeUserSessionProvider.appOwnsActiveConsoleSession = true
+        scheduler.createdTimers.last?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(scheduler.scheduledIntervals == [60, 10, 5 * 60])
+
+        scheduler.createdTimers.last?.fire()
+        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
+
+        #expect(didAssignWallpaper)
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+    }
+
     @Test func wakeCycleSkipsWhenAppUserSessionIsNotActive() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.onWakeup.rawValue
