@@ -1,3 +1,5 @@
+# For local testing only. This builds a locally signed app/DMG and is not the App Store release path.
+
 #!/usr/bin/env bash
 set -euo pipefail
 
