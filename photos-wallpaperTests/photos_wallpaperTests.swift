@@ -998,6 +998,42 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
+    @Test func repeatedInactiveScheduledTimerFiresDoNotKeepDeferringSameCycle() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: activeUserSessionProvider
+        )
+        controller.frequency = .minute
+        let writesAfterScheduling = defaults.setCallCounts["nextScheduledCycleDueAt"] ?? 0
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+        #expect(defaults.setCallCounts["nextScheduledCycleDueAt"] == writesAfterScheduling + 1)
+    }
+
     @Test func scheduledCycleRunsAgainWhenAppUserSessionBecomesActive() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
@@ -1711,6 +1747,7 @@ private final class FakePhotoManager: PhotoManaging {
 
 private final class FakeDefaults: KeyValueStoring {
     var storage: [String: Any] = [:]
+    private(set) var setCallCounts: [String: Int] = [:]
 
     func string(forKey defaultName: String) -> String? {
         storage[defaultName] as? String
@@ -1729,6 +1766,7 @@ private final class FakeDefaults: KeyValueStoring {
     }
 
     func set(_ value: Any?, forKey defaultName: String) {
+        setCallCounts[defaultName, default: 0] += 1
         storage[defaultName] = value
     }
 }

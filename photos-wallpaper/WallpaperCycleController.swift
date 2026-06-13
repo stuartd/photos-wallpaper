@@ -403,6 +403,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var hasLoadedInitialFrequency = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
     private var nextScheduledCycleDueAt: Date?
+    private var hasLoggedDeferredScheduledCycle = false
     private var wakeGraceEndsAt: Date?
 
     /// Production initializer used by the app.
@@ -634,6 +635,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private func clearStoredScheduledCycleDueAt() {
         nextScheduledCycleDueAt = nil
+        hasLoggedDeferredScheduledCycle = false
         defaults.set(nil, forKey: Self.nextScheduledCycleDueAtDefaultsKey)
     }
 
@@ -679,13 +681,17 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
     private func tick(trigger: WallpaperCycleTrigger) {
         if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
-            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
-            deferScheduledCycleIfNeeded(trigger: trigger)
+            if deferScheduledCycleIfNeeded(trigger: trigger) {
+                debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
+            } else if trigger != .scheduled {
+                debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
+            }
             return
         }
         if trigger == .scheduled && screenSleepStateProvider.screensAreAsleep {
-            debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
-            deferScheduledCycleIfNeeded(trigger: trigger)
+            if deferScheduledCycleIfNeeded(trigger: trigger) {
+                debugLog("WallpaperCycleController: skipping scheduled cycle because the screens are asleep.")
+            }
             return
         }
         if shouldDelayScheduledCycleForWakeGrace(trigger: trigger) {
@@ -785,14 +791,18 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeCatchUpTimer?.invalidate()
         wakeCatchUpTimer = nil
         wakeGraceEndsAt = nil
+        hasLoggedDeferredScheduledCycle = false
         storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
         debugLog("WallpaperCycleController: cancelled deferred scheduled cycle after manual wallpaper change.")
     }
 
-    private func deferScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
-        guard trigger == .scheduled else { return }
+    private func deferScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) -> Bool {
+        guard trigger == .scheduled else { return false }
+        guard !hasLoggedDeferredScheduledCycle else { return false }
+        hasLoggedDeferredScheduledCycle = true
         storeNextScheduledCycleDueAt(Date())
         debugLog("WallpaperCycleController: deferred scheduled cycle until the app is active again.")
+        return true
     }
 
     private func clearDeferredScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) {
@@ -800,6 +810,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeCatchUpTimer?.invalidate()
         wakeCatchUpTimer = nil
         wakeGraceEndsAt = nil
+        hasLoggedDeferredScheduledCycle = false
         guard let seconds = frequency?.seconds else {
             clearStoredScheduledCycleDueAt()
             return
@@ -811,11 +822,17 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         guard let dueAt = nextScheduledCycleDueAt else { return }
         guard Date() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
-            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but this app's user session is not active.")
+            if !hasLoggedDeferredScheduledCycle {
+                hasLoggedDeferredScheduledCycle = true
+                debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but this app's user session is not active.")
+            }
             return
         }
         guard !screenSleepStateProvider.screensAreAsleep else {
-            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but the screens are asleep.")
+            if !hasLoggedDeferredScheduledCycle {
+                hasLoggedDeferredScheduledCycle = true
+                debugLog("WallpaperCycleController: deferred scheduled cycle is overdue but the screens are asleep.")
+            }
             return
         }
         debugLog("WallpaperCycleController: running deferred scheduled cycle.")
