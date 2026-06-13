@@ -73,7 +73,7 @@ struct photos_wallpaperApp: App {
                     historyLogger.openHistoryLog()
                 }
 
-                Button("Show Diagnostic Log") {
+                Button("Show Runtime Log") {
                     runtimeLogger.openRuntimeLog()
                 }
             }

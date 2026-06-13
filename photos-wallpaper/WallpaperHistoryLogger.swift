@@ -324,7 +324,7 @@ final class AppRuntimeLogger {
     private let logURL: URL
     private let logFile: BoundedLogFile
     private let dateFormatter: DateFormatter
-    private let logWindow = PlainTextLogWindow(title: "Diagnostic Log")
+    private let logWindow = PlainTextLogWindow(title: "Photos Wallpaper Runtime Log")
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.runtime-log")
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
@@ -414,7 +414,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let dateFormatter: DateFormatter
     private var currentWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
-    private let historyWindow = PlainTextLogWindow(title: "Wallpaper History")
+    private let historyWindow = PlainTextLogWindow(title: "Photos Wallpaper History")
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         let directoryURL = AppLogStorage.directoryURL(fileManager: fileManager)
