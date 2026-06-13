@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 APP_PATH="${1:-$REPO_ROOT/releases/$APP_BUNDLE_NAME}"
 DMG_PATH="${2:-$REPO_ROOT/releases/Photos Wallpaper.dmg}"

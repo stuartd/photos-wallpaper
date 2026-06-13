@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 OUTPUT_DIR="${1:-$REPO_ROOT/releases}"
 DMG_NAME="${2:-Photos Wallpaper.dmg}"
 OUTPUT_APP="$OUTPUT_DIR/$APP_BUNDLE_NAME"
 
 echo "Building local Photos Wallpaper app..."
-"$SCRIPT_DIR/create-local.sh" "$OUTPUT_DIR" "$DMG_NAME"
+"$SCRIPT_DIR/_create-local.sh" "$OUTPUT_DIR" "$DMG_NAME"
 
 echo
 echo "Resetting first-run state..."

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 if [[ "${1:-}" != "--yes" ]]; then
   echo "This will delete the \"${PHOTOS_WALLPAPER_ALBUM_NAME}\" album from Photos."

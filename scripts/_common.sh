@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [[ -z "${BASH_VERSION:-}" ]]; then
-    echo "scripts/common.sh must be sourced from bash." >&2
+    echo "scripts/_common.sh must be sourced from bash." >&2
     return 2 2>/dev/null || exit 2
 fi
 
@@ -13,13 +13,11 @@ SCHEME="photos-wallpaper"
 VOLUME_NAME="Photos Wallpaper"
 APP_BUNDLE_NAME="Photos Wallpaper.app"
 XCODE_APP_BUNDLE_NAME="photos-wallpaper.app"
-APP_SUPPORT_DIR="${HOME}/Library/Application Support/photos-wallpaper"
+APP_SUPPORT_DIR="${HOME}/Library/Containers/com.rosehillsolutions.photoswallpaper/Data/Library/Application Support/photos-wallpaper"
 PHOTOS_WALLPAPER_ALBUM_NAME="Photos Wallpaper"
 
 KNOWN_DEFAULTS_DOMAINS=(
     "com.rosehillsolutions.photoswallpaper"
-    "photos-wallpaper"
-    "photos_wallpaper"
 )
 
 git_commit() {
@@ -28,8 +26,4 @@ git_commit() {
 
 matching_defaults_domains() {
     printf '%s\n' "${KNOWN_DEFAULTS_DOMAINS[@]}"
-    defaults domains 2>/dev/null |
-        tr ',' '\n' |
-        sed 's/^ *//; s/ *$//' |
-        grep -Ei 'photos[-_.]?wallpaper' || true
 }

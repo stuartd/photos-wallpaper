@@ -3,7 +3,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 CONFIGURATION="Release"
 DMG_NAME="${2:-Photos Wallpaper.dmg}"
