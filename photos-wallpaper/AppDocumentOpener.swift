@@ -11,7 +11,7 @@ final class AppDocumentOpener: AppDocumentOpening {
     private var privacyWindow: NSWindow?
 
     func openAboutPanel() {
-        let iconView = NSImageView(image: NSApp.applicationIconImage)
+        let iconView = NSImageView(image: appIconImage)
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
 
@@ -66,6 +66,12 @@ final class AppDocumentOpener: AppDocumentOpening {
 
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
+    }
+
+    private var appIconImage: NSImage {
+        NSImage(named: "AppIcon")
+            ?? Bundle.main.image(forResource: "AppIcon")
+            ?? NSApp.applicationIconImage
     }
 
     func openPrivacyDocument() {
