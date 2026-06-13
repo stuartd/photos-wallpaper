@@ -1031,10 +1031,11 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
-    @Test func overdueScheduledCycleAfterWakeRetriesUntilAppUserSessionBecomesActive() async {
+    @Test func overdueScheduledCycleAfterWakeWaitsForAppUserSessionToBecomeActive() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
         let wakeObserver = FakeWakeEventObserver()
+        let activeUserSessionEventObserver = FakeActiveUserSessionEventObserver()
         let photoManager = FakePhotoManager()
         let activeUserSessionProvider = FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: false)
         guard let baseScreen = NSScreen.screens.first else {
@@ -1049,6 +1050,7 @@ struct PhotosWallpaperTests {
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
             wakeEventObserver: wakeObserver,
+            activeUserSessionEventObserver: activeUserSessionEventObserver,
             timerScheduler: scheduler,
             screenSleepStateProvider: FakeScreenSleepStateProvider(),
             activeUserSessionProvider: activeUserSessionProvider
@@ -1061,15 +1063,16 @@ struct PhotosWallpaperTests {
         await Task.yield()
 
         #expect(photoManager.getRandomPhotosCallCount == 0)
-        #expect(scheduler.scheduledIntervals == [60, 10])
-        #expect(scheduler.scheduledRepeats == [true, false])
+        #expect(scheduler.scheduledIntervals == [60])
+        #expect(scheduler.scheduledRepeats == [true])
 
         activeUserSessionProvider.appOwnsActiveConsoleSession = true
-        scheduler.createdTimers.last?.fire()
+        activeUserSessionEventObserver.fireSessionDidBecomeActive()
         await Task.yield()
 
         #expect(photoManager.getRandomPhotosCallCount == 0)
-        #expect(scheduler.scheduledIntervals == [60, 10, 5 * 60])
+        #expect(scheduler.scheduledIntervals == [60, 5 * 60])
+        #expect(scheduler.scheduledRepeats == [true, false])
 
         scheduler.createdTimers.last?.fire()
         let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
@@ -1818,6 +1821,28 @@ private final class FakeWakeEventObserver: WakeEventObserving {
     }
 
     func fireWakeEvent() {
+        handler?()
+    }
+}
+
+private final class FakeActiveUserSessionEventObservation: ActiveUserSessionEventObservation {
+    private(set) var invalidateCallCount = 0
+
+    func invalidate() {
+        invalidateCallCount += 1
+    }
+}
+
+private final class FakeActiveUserSessionEventObserver: ActiveUserSessionEventObserving {
+    private var handler: (() -> Void)?
+    private(set) var observation = FakeActiveUserSessionEventObservation()
+
+    func observeSessionDidBecomeActive(_ handler: @escaping () -> Void) -> ActiveUserSessionEventObservation {
+        self.handler = handler
+        return observation
+    }
+
+    func fireSessionDidBecomeActive() {
         handler?()
     }
 }

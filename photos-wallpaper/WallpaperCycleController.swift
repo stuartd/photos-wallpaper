@@ -149,6 +149,14 @@ protocol WakeEventObserving {
     func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation
 }
 
+protocol ActiveUserSessionEventObservation: AnyObject {
+    func invalidate()
+}
+
+protocol ActiveUserSessionEventObserving {
+    func observeSessionDidBecomeActive(_ handler: @escaping () -> Void) -> ActiveUserSessionEventObservation
+}
+
 @MainActor protocol ScreenSleepStateProviding: AnyObject {
     var screensAreAsleep: Bool { get }
 }
@@ -174,6 +182,23 @@ final class NotificationWakeEventObservation: WakeEventObservation {
     }
 }
 
+final class NotificationActiveUserSessionEventObservation: ActiveUserSessionEventObservation {
+    private let center: NotificationCenter
+    private var token: NSObjectProtocol?
+
+    init(center: NotificationCenter, token: NSObjectProtocol) {
+        self.center = center
+        self.token = token
+    }
+
+    func invalidate() {
+        if let token {
+            center.removeObserver(token)
+            self.token = nil
+        }
+    }
+}
+
 struct AppKitWakeEventObserver: WakeEventObserving {
     func observeWake(_ handler: @escaping () -> Void) -> WakeEventObservation {
         let center = NSWorkspace.shared.notificationCenter
@@ -183,6 +208,18 @@ struct AppKitWakeEventObserver: WakeEventObserving {
             handler()
         }
         return NotificationWakeEventObservation(center: center, token: token)
+    }
+}
+
+struct AppKitActiveUserSessionEventObserver: ActiveUserSessionEventObserving {
+    func observeSessionDidBecomeActive(_ handler: @escaping () -> Void) -> ActiveUserSessionEventObservation {
+        let center = NSWorkspace.shared.notificationCenter
+        let token = center.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification,
+                                       object: nil,
+                                       queue: .main) { _ in
+            handler()
+        }
+        return NotificationActiveUserSessionEventObservation(center: center, token: token)
     }
 }
 
@@ -355,6 +392,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var wakeCatchUpTimer: CancellableTimer?
     private let wakeEventObserver: WakeEventObserving
     private var wakeObservation: WakeEventObservation?
+    private let activeUserSessionEventObserver: ActiveUserSessionEventObserving
+    private var activeUserSessionObservation: ActiveUserSessionEventObservation?
     private let screenSleepStateProvider: ScreenSleepStateProviding
     private let activeUserSessionProvider: ActiveUserSessionProviding
     private let preflightsPhotoAccessWhenScheduling: Bool
@@ -378,6 +417,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   notifier: UserNotificationWallpaperCycleNotifier(),
                   screenProvider: AppKitScreenProvider(),
                   wakeEventObserver: AppKitWakeEventObserver(),
+                  activeUserSessionEventObserver: AppKitActiveUserSessionEventObserver(),
                   timerScheduler: FoundationTimerScheduler(),
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: SystemActiveUserSessionProvider(),
@@ -392,6 +432,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                      notifier: WallpaperCycleNotifying,
                      screenProvider: ScreenProviding,
                      wakeEventObserver: WakeEventObserving,
+                     activeUserSessionEventObserver: ActiveUserSessionEventObserving = AppKitActiveUserSessionEventObserver(),
                      timerScheduler: TimerScheduling,
                      legacyDefaultsURL: URL? = nil) {
         self.init(photoManager: photoManager,
@@ -400,6 +441,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   notifier: notifier,
                   screenProvider: screenProvider,
                   wakeEventObserver: wakeEventObserver,
+                  activeUserSessionEventObserver: activeUserSessionEventObserver,
                   timerScheduler: timerScheduler,
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: AlwaysActiveUserSessionProvider(),
@@ -413,6 +455,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          notifier: WallpaperCycleNotifying,
          screenProvider: ScreenProviding,
          wakeEventObserver: WakeEventObserving,
+         activeUserSessionEventObserver: ActiveUserSessionEventObserving = AppKitActiveUserSessionEventObserver(),
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
@@ -424,6 +467,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.notifier = notifier
         self.screenProvider = screenProvider
         self.wakeEventObserver = wakeEventObserver
+        self.activeUserSessionEventObserver = activeUserSessionEventObserver
         self.timerScheduler = timerScheduler
         self.screenSleepStateProvider = screenSleepStateProvider
         self.activeUserSessionProvider = activeUserSessionProvider
@@ -499,6 +543,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeGraceEndsAt = nil
         wakeObservation?.invalidate()
         wakeObservation = nil
+        activeUserSessionObservation?.invalidate()
+        activeUserSessionObservation = nil
 
         guard let frequency else {
             clearStoredScheduledCycleDueAt()
@@ -536,6 +582,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         case .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
             ensureStoredScheduledCycleDueAt(for: frequency)
             observeWakeForDeferredScheduledCycle()
+            observeSessionActivationForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
             runDeferredScheduledCycleIfNeeded()
             
@@ -543,6 +590,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         case .oneSecond:
             ensureStoredScheduledCycleDueAt(for: frequency)
             observeWakeForDeferredScheduledCycle()
+            observeSessionActivationForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
             runDeferredScheduledCycleIfNeeded()
         #endif
@@ -553,6 +601,14 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeObservation = wakeEventObserver.observeWake { [weak self] in
             Task { @MainActor [weak self] in
                 self?.scheduleDeferredScheduledCycleAfterWakeIfNeeded()
+            }
+        }
+    }
+
+    private func observeSessionActivationForDeferredScheduledCycle() {
+        activeUserSessionObservation = activeUserSessionEventObserver.observeSessionDidBecomeActive { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scheduleDeferredScheduledCycleAfterSessionActivationIfNeeded()
             }
         }
     }
@@ -770,8 +826,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         guard let dueAt = nextScheduledCycleDueAt else { return }
         guard Date() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
-            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake but this app's user session is not active.")
-            scheduleWakeReadinessRetryTimer()
+            wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake; waiting for this app's user session to become active.")
             return
         }
         guard !screenSleepStateProvider.screensAreAsleep else {
@@ -781,6 +837,22 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
         scheduleWakeCatchUpTimer()
+    }
+
+    private func scheduleDeferredScheduledCycleAfterSessionActivationIfNeeded() {
+        guard let dueAt = nextScheduledCycleDueAt else { return }
+        guard Date() >= dueAt else { return }
+        guard activeUserSessionProvider.appOwnsActiveConsoleSession else { return }
+        guard !screenSleepStateProvider.screensAreAsleep else {
+            debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after session activation but the screens are asleep.")
+            scheduleWakeReadinessRetryTimer()
+            return
+        }
+        if wakeGraceEndsAt != nil {
+            scheduleWakeCatchUpTimer()
+        } else {
+            runDeferredScheduledCycleIfNeeded()
+        }
     }
 
     private func shouldDelayScheduledCycleForWakeGrace(trigger: WallpaperCycleTrigger) -> Bool {
