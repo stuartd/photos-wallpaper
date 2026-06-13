@@ -32,11 +32,7 @@ The app stores a few settings locally on your Mac:
 
 ## Wallpaper History
 
-When a wallpaper is applied, Photos Wallpaper can write a plain-text history entry for the current app session.
-
-The history file is stored here:
-
-`~/Library/Application Support/photos-wallpaper/wallpaper-history.log`
+When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Logs menu.
 
 History entries may include:
 
@@ -50,11 +46,7 @@ The history log is cleared when Photos Wallpaper starts. It is kept locally and 
 
 ## Runtime Diagnostics
 
-Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible.
-
-The diagnostics file is stored here:
-
-`~/Library/Application Support/photos-wallpaper/runtime.log`
+Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible. You can view this from the app's Logs menu.
 
 Diagnostics entries may include:
 
