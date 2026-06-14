@@ -203,11 +203,9 @@ final class PlainTextLogWindow {
         window.isReleasedWhenClosed = false
         bringToFront(window)
 
-        DispatchQueue.main.async {
-            textView.scrollToEndOfDocument(nil)
-        }
         self.textView = textView
         self.window = window
+        scrollToBottomAfterLayout(textView)
     }
 
     @MainActor
@@ -265,10 +263,34 @@ final class PlainTextLogWindow {
         }
 
         if wasNearBottom {
-            textView.scrollToEndOfDocument(nil)
+            scrollToBottom(textView)
         } else if let previousFirstVisibleCharacterIndex {
             let characterIndex = min(previousFirstVisibleCharacterIndex, max(textView.string.count - 1, 0))
             textView.scrollRangeToVisible(NSRange(location: characterIndex, length: 0))
+        }
+    }
+
+    @MainActor
+    private func scrollToBottomAfterLayout(_ textView: NSTextView) {
+        scrollToBottom(textView)
+        DispatchQueue.main.async { [weak textView] in
+            guard let textView else { return }
+            self.scrollToBottom(textView)
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView else { return }
+                self.scrollToBottom(textView)
+            }
+        }
+    }
+
+    @MainActor
+    private func scrollToBottom(_ textView: NSTextView) {
+        if let textContainer = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: textContainer)
+        }
+        textView.scrollToEndOfDocument(nil)
+        if let scrollView = textView.enclosingScrollView {
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
     }
 
