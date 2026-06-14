@@ -865,11 +865,24 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             scheduleWakeReadinessRetryTimer()
             return
         }
-        if wakeGraceEndsAt != nil {
-            scheduleWakeCatchUpTimer()
-        } else {
-            runDeferredScheduledCycleIfNeeded()
+        resumeScheduledCycleAfterSessionActivation()
+    }
+
+    private func resumeScheduledCycleAfterSessionActivation() {
+        wakeCatchUpTimer?.invalidate()
+        wakeCatchUpTimer = nil
+        wakeGraceEndsAt = nil
+        hasLoggedDeferredScheduledCycle = false
+        guard let frequency,
+              let seconds = frequency.seconds else {
+            clearStoredScheduledCycleDueAt()
+            return
         }
+        timer?.invalidate()
+        timer = nil
+        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        debugLog("WallpaperCycleController: resumed scheduled cycle after session activation; next cycle follows the selected schedule.")
+        scheduleTimerTrigger(for: frequency)
     }
 
     private func shouldDelayScheduledCycleForWakeGrace(trigger: WallpaperCycleTrigger) -> Bool {
