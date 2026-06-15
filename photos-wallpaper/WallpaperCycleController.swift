@@ -433,7 +433,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                      notifier: WallpaperCycleNotifying,
                      screenProvider: ScreenProviding,
                      wakeEventObserver: WakeEventObserving,
-                     activeUserSessionEventObserver: ActiveUserSessionEventObserving = AppKitActiveUserSessionEventObserver(),
+                     activeUserSessionEventObserver: ActiveUserSessionEventObserving? = nil,
                      timerScheduler: TimerScheduling,
                      legacyDefaultsURL: URL? = nil) {
         self.init(photoManager: photoManager,
@@ -456,7 +456,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          notifier: WallpaperCycleNotifying,
          screenProvider: ScreenProviding,
          wakeEventObserver: WakeEventObserving,
-         activeUserSessionEventObserver: ActiveUserSessionEventObserving = AppKitActiveUserSessionEventObserver(),
+         activeUserSessionEventObserver: ActiveUserSessionEventObserving? = nil,
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
@@ -468,7 +468,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.notifier = notifier
         self.screenProvider = screenProvider
         self.wakeEventObserver = wakeEventObserver
-        self.activeUserSessionEventObserver = activeUserSessionEventObserver
+        self.activeUserSessionEventObserver = activeUserSessionEventObserver ?? AppKitActiveUserSessionEventObserver()
         self.timerScheduler = timerScheduler
         self.screenSleepStateProvider = screenSleepStateProvider
         self.activeUserSessionProvider = activeUserSessionProvider
