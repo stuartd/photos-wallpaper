@@ -141,7 +141,13 @@ final class AppDocumentOpener: AppDocumentOpening {
 
     private var aboutVersionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         var details: [String] = []
+        if let build,
+           !build.isEmpty,
+           !build.hasPrefix("$(") {
+            details.append("build \(build)")
+        }
         if let commit = Bundle.main.object(forInfoDictionaryKey: "GitCommit") as? String,
            !commit.isEmpty,
            !commit.hasPrefix("$(") {
