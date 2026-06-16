@@ -328,7 +328,7 @@ struct PhotosWallpaperTests {
         #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
-    @Test func savedIntervalRunsOverdueScheduledCycleOnAppLaunch() async {
+    @Test func savedIntervalDefersOverdueScheduledCycleOnAppLaunch() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.day.rawValue
         defaults.storage["nextScheduledCycleDueAt"] = Date(timeIntervalSince1970: 1).timeIntervalSince1970
@@ -348,11 +348,18 @@ struct PhotosWallpaperTests {
             wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
+        await Task.yield()
+
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+        #expect(defaults.double(forKey: "nextScheduledCycleDueAt") > Date().timeIntervalSince1970)
+
+        scheduler.createdTimers.first?.fire()
+        await Task.yield()
         let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
 
         #expect(didAssignWallpaper)
         #expect(photoManager.getRandomPhotosCallCount == 1)
-        #expect(defaults.double(forKey: "nextScheduledCycleDueAt") > Date().timeIntervalSince1970)
     }
 
     @Test func savedIntervalDoesNotRunBeforeStoredDueTimeOnAppLaunch() async {

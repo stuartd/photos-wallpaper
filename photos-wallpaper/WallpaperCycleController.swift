@@ -405,6 +405,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var nextScheduledCycleDueAt: Date?
     private var hasLoggedDeferredScheduledCycle = false
     private var wakeGraceEndsAt: Date?
+    private var isConfiguringInitialSchedule = true
 
     /// Production initializer used by the app.
     convenience init() {
@@ -487,6 +488,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         hasLoadedInitialFrequency = true
         scheduleCycleTrigger()
+        isConfiguringInitialSchedule = false
     }
 
     private static var defaultLegacyDefaultsURL: URL? {
@@ -585,7 +587,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             observeWakeForDeferredScheduledCycle()
             observeSessionActivationForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
-            runDeferredScheduledCycleIfNeeded()
+            if isConfiguringInitialSchedule {
+                deferOverdueScheduledCycleAfterLaunchIfNeeded(for: frequency)
+            } else {
+                runDeferredScheduledCycleIfNeeded()
+            }
             
         #if DEBUG
         case .oneSecond:
@@ -593,7 +599,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             observeWakeForDeferredScheduledCycle()
             observeSessionActivationForDeferredScheduledCycle()
             scheduleTimerTrigger(for: frequency)
-            runDeferredScheduledCycleIfNeeded()
+            if isConfiguringInitialSchedule {
+                deferOverdueScheduledCycleAfterLaunchIfNeeded(for: frequency)
+            } else {
+                runDeferredScheduledCycleIfNeeded()
+            }
         #endif
         }
     }
@@ -637,6 +647,17 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         nextScheduledCycleDueAt = nil
         hasLoggedDeferredScheduledCycle = false
         defaults.set(nil, forKey: Self.nextScheduledCycleDueAtDefaultsKey)
+    }
+
+    private func deferOverdueScheduledCycleAfterLaunchIfNeeded(for frequency: CycleFrequency) {
+        guard let dueAt = nextScheduledCycleDueAt,
+              Date() >= dueAt,
+              let seconds = frequency.seconds else {
+            return
+        }
+        hasLoggedDeferredScheduledCycle = false
+        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        debugLog("WallpaperCycleController: deferred overdue scheduled cycle after app launch; next cycle follows the selected schedule.")
     }
 
     private func scheduleTimerTrigger(for frequency: CycleFrequency) {
