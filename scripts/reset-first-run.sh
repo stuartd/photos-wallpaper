@@ -54,32 +54,14 @@ echo "Removing Photos Wallpaper album from Photos..."
 "$SCRIPT_DIR/_delete-photos-wallpaper-album.sh" --yes
 
 echo
-echo "Resetting Photos permission for likely bundle identifiers..."
-TCC_DOMAINS=()
-while IFS= read -r domain; do
-    [[ -z "${domain}" ]] && continue
-    TCC_DOMAINS+=("${domain}")
-done < <(
-    printf '%s\n' "${DOMAINS[@]}" |
-        sort -u |
-        grep -E '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+$' || true
-)
-
-if ((${#TCC_DOMAINS[@]} == 0)); then
-    tccutil reset Photos >/dev/null 2>&1 || true
-    echo "Reset Photos permission globally because no bundle identifier was found."
-else
-    for domain in "${TCC_DOMAINS[@]}"; do
-        tccutil reset Photos "${domain}" >/dev/null 2>&1 || true
-        echo "Reset Photos permission for: ${domain}"
-    done
-fi
-
-tccutil reset Photos com.rosehillsolutions.photoswallpaper
+echo "Resetting Photos permission..."
+tccutil reset Photos "${KNOWN_DEFAULTS_DOMAINS[0]}" >/dev/null 2>&1 || true
+echo "Reset Photos permission for: ${KNOWN_DEFAULTS_DOMAINS[0]}"
 
 echo
 echo "Start at Login cannot be removed reliably from a shell script on all macOS versions."
 echo "Check System Settings > General > Login Items & Extensions and remove Photos Wallpaper if present."
 
 echo
-echo "Done. Launch Photos Wallpaper again to get first-run behavior."
+echo "Done"
+

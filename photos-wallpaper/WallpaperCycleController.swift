@@ -292,8 +292,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         let seconds: TimeInterval?
     }
 
+    // This covers three cases - actual login in, wake from sleep, and fast user switching - #21
     case onLogin
-    case onWakeup
     #if DEBUG
     case oneSecond // debug only as intended to be used for stress tests, not as an actual option
     #endif
@@ -308,8 +308,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     static let options: [Option] = {
         var options = [
-            Option(frequency: .onLogin, displayName: "On Login", seconds: nil),
-            Option(frequency: .onWakeup, displayName: "On Wake", seconds: nil),
+            Option(frequency: .onLogin, displayName: "When I log in", seconds: nil),
             Option(frequency: .minute, displayName: "Every minute", seconds: 60),
             Option(frequency: .fiveMinutes, displayName: "Every 5 minutes", seconds: 5 * 60),
             Option(frequency: .fifteenMinutes, displayName: "Every 15 minutes", seconds: 15 * 60),
@@ -573,16 +572,18 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         switch frequency {
         case .onLogin:
             clearStoredScheduledCycleDueAt()
-            if isConfiguringInitialSchedule {
-                debugLog("WallpaperCycleController: running login wallpaper schedule.")
-                Task { @MainActor in
-                    self.tick(trigger: .login)
+            debugLog("WallpaperCycleController: observing user session activation notifications.")
+            activeUserSessionObservation = activeUserSessionEventObserver.observeSessionDidBecomeActive { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.tick(trigger: .unlock)
                 }
-            } else {
-                debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
             }
-        case .onWakeup:
-            clearStoredScheduledCycleDueAt()
+            if isConfiguringInitialSchedule {
+                debugLog("WallpaperCycleController: running login wallpaper schedule after app launch.")
+                Task { @MainActor in
+                    self.tick(trigger: .unlock)
+                }
+            }
             debugLog("WallpaperCycleController: observing system wake notifications.")
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
@@ -681,7 +682,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private enum WallpaperCycleTrigger {
         case manual
-        case login
+        case unlock
         case wake
         case scheduled
 
@@ -696,7 +697,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         var logDescription: String {
             switch self {
             case .manual: return "manual trigger"
-            case .login: return "login trigger"
+            case .unlock: return "unlock trigger"
             case .wake: return "wake trigger"
             case .scheduled: return "scheduled trigger"
             }
