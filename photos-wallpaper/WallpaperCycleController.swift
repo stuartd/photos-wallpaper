@@ -577,7 +577,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         switch frequency {
         case .onLogin:
             clearStoredScheduledCycleDueAt()
-            debugLog("WallpaperCycleController: observing user session activation notifications.")
+            logScheduledWallpaperChanges(for: frequency)
             activeUserSessionObservation = activeUserSessionEventObserver.observeSessionDidBecomeActive { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.tick(trigger: .unlock)
@@ -589,7 +589,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                     self.tick(trigger: .unlock)
                 }
             }
-            debugLog("WallpaperCycleController: observing system wake notifications.")
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.tick(trigger: .wake)
@@ -673,9 +672,13 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         debugLog("WallpaperCycleController: deferred overdue scheduled cycle after app launch; next cycle follows the selected schedule.")
     }
 
+    private func logScheduledWallpaperChanges(for frequency: CycleFrequency) {
+        debugLog("WallpaperCycleController: scheduling wallpaper changes for '\(frequency.displayName)'.")
+    }
+
     private func scheduleTimerTrigger(for frequency: CycleFrequency) {
         guard let seconds = frequency.seconds else { return }
-        debugLog("WallpaperCycleController: scheduling timer for \(frequency.displayName.lowercased()) (\(Int(seconds)) seconds).")
+        debugLog("WallpaperCycleController: scheduling wallpaper changes for '\(frequency.displayName)' (\(Int(seconds)) seconds).")
         timer = timerScheduler.scheduledTimer(interval: seconds, repeats: true) { [weak self] in
             // `[weak self]` avoids the timer retaining the controller forever. Without that, the
             // controller and timer can keep each other alive even if the app wanted to release one.
