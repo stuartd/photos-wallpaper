@@ -183,19 +183,15 @@ final class NotificationWakeEventObservation: WakeEventObservation {
 }
 
 final class NotificationActiveUserSessionEventObservation: ActiveUserSessionEventObservation {
-    private let center: NotificationCenter
-    private var token: NSObjectProtocol?
+    private var invalidations: [() -> Void]
 
-    init(center: NotificationCenter, token: NSObjectProtocol) {
-        self.center = center
-        self.token = token
+    init(invalidations: [() -> Void]) {
+        self.invalidations = invalidations
     }
 
     func invalidate() {
-        if let token {
-            center.removeObserver(token)
-            self.token = nil
-        }
+        invalidations.forEach { $0() }
+        invalidations = []
     }
 }
 
@@ -213,13 +209,22 @@ struct AppKitWakeEventObserver: WakeEventObserving {
 
 struct AppKitActiveUserSessionEventObserver: ActiveUserSessionEventObserving {
     func observeSessionDidBecomeActive(_ handler: @escaping () -> Void) -> ActiveUserSessionEventObservation {
-        let center = NSWorkspace.shared.notificationCenter
-        let token = center.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification,
-                                       object: nil,
-                                       queue: .main) { _ in
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let workspaceToken = workspaceCenter.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification,
+                                                         object: nil,
+                                                         queue: .main) { _ in
             handler()
         }
-        return NotificationActiveUserSessionEventObservation(center: center, token: token)
+        let distributedCenter = DistributedNotificationCenter.default()
+        let unlockToken = distributedCenter.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"),
+                                                        object: nil,
+                                                        queue: .main) { _ in
+            handler()
+        }
+        return NotificationActiveUserSessionEventObservation(invalidations: [
+            { workspaceCenter.removeObserver(workspaceToken) },
+            { distributedCenter.removeObserver(unlockToken) }
+        ])
     }
 }
 

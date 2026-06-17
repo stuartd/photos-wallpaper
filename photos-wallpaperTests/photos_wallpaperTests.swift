@@ -34,6 +34,19 @@ struct PhotosWallpaperTests {
         }
     }
 
+    @Test func activeUserSessionEventObservationInvalidatesEveryRegisteredNotification() {
+        var invalidationCount = 0
+        let observation = NotificationActiveUserSessionEventObservation(invalidations: [
+            { invalidationCount += 1 },
+            { invalidationCount += 1 }
+        ])
+
+        observation.invalidate()
+        observation.invalidate()
+
+        #expect(invalidationCount == 2)
+    }
+
 
     #if DEBUG
     @Test func debugBuildIncludesOneSecondStressTestFrequency() {
