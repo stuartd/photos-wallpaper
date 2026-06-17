@@ -28,8 +28,11 @@ for domain in "${DOMAINS[@]}"; do
     [[ -z "${domain}" ]] && continue
     prefs_file="${HOME}/Library/Containers/${domain}/Data/Library/Preferences/${domain}.plist"
     if [[ -e "${prefs_file}" ]]; then
-        rm -f "${prefs_file}"
-        echo "Removed: ${prefs_file}"
+        if rm -f "${prefs_file}" 2>/dev/null; then
+            echo "Removed: ${prefs_file}"
+        else
+            echo "Could not remove protected preference file; defaults were already cleared: ${prefs_file}"
+        fi
     fi
 done
 killall cfprefsd >/dev/null 2>&1 || true
@@ -37,8 +40,11 @@ killall cfprefsd >/dev/null 2>&1 || true
 echo
 echo "Removing local logs/cache/history..."
 if [[ -d "${APP_SUPPORT_DIR}" ]]; then
-    rm -rf "${APP_SUPPORT_DIR}"
-    echo "Removed: ${APP_SUPPORT_DIR}"
+    if rm -rf "${APP_SUPPORT_DIR}" 2>/dev/null; then
+        echo "Removed: ${APP_SUPPORT_DIR}"
+    else
+        echo "Could not remove protected local logs/cache/history: ${APP_SUPPORT_DIR}"
+    fi
 else
     echo "No local logs/cache/history directories found."
 fi

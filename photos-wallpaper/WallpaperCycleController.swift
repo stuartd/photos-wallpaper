@@ -573,7 +573,14 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         switch frequency {
         case .onLogin:
             clearStoredScheduledCycleDueAt()
-            debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
+            if isConfiguringInitialSchedule {
+                debugLog("WallpaperCycleController: running login wallpaper schedule.")
+                Task { @MainActor in
+                    self.tick(trigger: .login)
+                }
+            } else {
+                debugLog("WallpaperCycleController: saved login wallpaper schedule without running a cycle.")
+            }
         case .onWakeup:
             clearStoredScheduledCycleDueAt()
             debugLog("WallpaperCycleController: observing system wake notifications.")

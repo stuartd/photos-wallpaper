@@ -439,7 +439,7 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
-    @Test func savedOnLoginDoesNotRunWallpaperCycleOnAppLaunch() async {
+    @Test func savedOnLoginRunsWallpaperCycleOnAppLaunch() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
         let scheduler = FakeTimerScheduler()
@@ -458,11 +458,12 @@ struct PhotosWallpaperTests {
             wakeEventObserver: FakeWakeEventObserver(),
             timerScheduler: scheduler
         )
-        await Task.yield()
+        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
 
         #expect(scheduler.scheduledIntervals.isEmpty)
-        #expect(photoManager.getRandomPhotosCallCount == 0)
-        #expect(photoManager.wallpaperAssignments.isEmpty)
+        #expect(didAssignWallpaper)
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
     @Test func onWakeupRunsWallpaperCycleWhenWakeEventFires() async {
