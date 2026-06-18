@@ -401,6 +401,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let screenSleepStateProvider: ScreenSleepStateProviding
     private let activeUserSessionProvider: ActiveUserSessionProviding
     private let preflightsPhotoAccessWhenScheduling: Bool
+    private let startsScheduleAutomatically: Bool
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
@@ -428,7 +429,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: SystemActiveUserSessionProvider(),
                   legacyDefaultsURL: Self.defaultLegacyDefaultsURL,
-                  preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests)
+                  preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests,
+                  startsScheduleAutomatically: !Self.isRunningUnitTests)
     }
 
     /// Injection-friendly initializer used by tests and by the convenience initializer above.
@@ -466,7 +468,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
          legacyDefaultsURL: URL? = nil,
-         preflightsPhotoAccessWhenScheduling: Bool = true) {
+         preflightsPhotoAccessWhenScheduling: Bool = true,
+         startsScheduleAutomatically: Bool = true) {
         self.photoManager = photoManager
         self.defaults = defaults
         self.historyLogger = historyLogger
@@ -478,6 +481,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.screenSleepStateProvider = screenSleepStateProvider
         self.activeUserSessionProvider = activeUserSessionProvider
         self.preflightsPhotoAccessWhenScheduling = preflightsPhotoAccessWhenScheduling
+        self.startsScheduleAutomatically = startsScheduleAutomatically
         if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
@@ -491,7 +495,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
         }
         hasLoadedInitialFrequency = true
-        scheduleCycleTrigger()
+        if startsScheduleAutomatically {
+            scheduleCycleTrigger()
+        }
         isConfiguringInitialSchedule = false
     }
 
@@ -503,7 +509,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     // Not ideal, but this will allow the permission tests to run without generating an actual request popup
     private static var isRunningUnitTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
     }
 
     private static func storedFrequencyRawValue(defaults: KeyValueStoring, legacyDefaultsURL: URL?) -> String? {
