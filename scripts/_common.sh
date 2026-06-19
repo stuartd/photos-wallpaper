@@ -12,7 +12,7 @@ PROJECT="$REPO_ROOT/photos-wallpaper.xcodeproj"
 SCHEME="photos-wallpaper"
 VOLUME_NAME="Photos Wallpaper"
 APP_BUNDLE_NAME="Photos Wallpaper.app"
-XCODE_APP_BUNDLE_NAME="photos-wallpaper.app"
+XCODE_APP_BUNDLE_NAME="$APP_BUNDLE_NAME"
 APP_SUPPORT_DIR="${HOME}/Library/Containers/com.rosehillsolutions.photoswallpaper/Data/Library/Application Support/photos-wallpaper"
 PHOTOS_WALLPAPER_ALBUM_NAME="Photos Wallpaper"
 

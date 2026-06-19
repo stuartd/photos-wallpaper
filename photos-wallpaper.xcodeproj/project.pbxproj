@@ -17,7 +17,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		178CB4252FA11B0800933083 /* photos-wallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "photos-wallpaper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		178CB4252FA11B0800933083 /* Photos Wallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Photos Wallpaper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1790BDFE2FA7F16400024FC1 /* photos-wallpaperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "photos-wallpaperTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -77,7 +77,7 @@
 		178CB4262FA11B0800933083 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				178CB4252FA11B0800933083 /* photos-wallpaper.app */,
+				178CB4252FA11B0800933083 /* Photos Wallpaper.app */,
 				1790BDFE2FA7F16400024FC1 /* photos-wallpaperTests.xctest */,
 			);
 			name = Products;
@@ -105,7 +105,7 @@
 			packageProductDependencies = (
 			);
 			productName = "photos-wallpaper";
-			productReference = 178CB4252FA11B0800933083 /* photos-wallpaper.app */;
+			productReference = 178CB4252FA11B0800933083 /* Photos Wallpaper.app */;
 			productType = "com.apple.product-type.application";
 		};
 		1790BDFD2FA7F16400024FC1 /* photos-wallpaperTests */ = {
@@ -368,7 +368,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14;
 				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rosehillsolutions.photoswallpaper;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = photos_wallpaper;
+				PRODUCT_NAME = "Photos Wallpaper";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
@@ -420,7 +421,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14;
 				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rosehillsolutions.photoswallpaper;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = photos_wallpaper;
+				PRODUCT_NAME = "Photos Wallpaper";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
@@ -456,7 +458,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/photos-wallpaper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/photos-wallpaper";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Photos Wallpaper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Photos Wallpaper";
 			};
 			name = Debug;
 		};
@@ -479,7 +481,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/photos-wallpaper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/photos-wallpaper";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Photos Wallpaper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Photos Wallpaper";
 			};
 			name = Release;
 		};
