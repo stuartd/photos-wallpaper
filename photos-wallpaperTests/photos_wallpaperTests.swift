@@ -47,6 +47,29 @@ struct PhotosWallpaperTests {
         #expect(invalidationCount == 2)
     }
 
+    @Test func firstRunNotifierShowsMenuBarWelcomeWindowOnce() {
+        let defaults = FakeDefaults()
+        let presenter = FakeFirstRunWelcomePresenter()
+        let notifier = FirstRunNotifier(defaults: defaults, presenter: presenter)
+
+        notifier.notifyIfNeeded()
+        notifier.notifyIfNeeded()
+
+        #expect(presenter.presentCallCount == 1)
+        #expect(defaults.bool(forKey: "didShowMenuBarWelcomeWindow"))
+    }
+
+    @Test func firstRunNotifierSkipsMenuBarWelcomeWindowAfterPreviousRun() {
+        let defaults = FakeDefaults()
+        defaults.set(true, forKey: "didShowMenuBarWelcomeWindow")
+        let presenter = FakeFirstRunWelcomePresenter()
+        let notifier = FirstRunNotifier(defaults: defaults, presenter: presenter)
+
+        notifier.notifyIfNeeded()
+
+        #expect(presenter.presentCallCount == 0)
+    }
+
 
     #if DEBUG
     @Test func debugBuildIncludesOneSecondStressTestFrequency() {
@@ -1918,6 +1941,14 @@ private final class FakeStartAtLoginPromptPresenter: StartAtLoginPromptPresentin
 
     func showLoginItemError(_ error: Error) {
         shownErrors.append(error)
+    }
+}
+
+private final class FakeFirstRunWelcomePresenter: FirstRunWelcomePresenting {
+    private(set) var presentCallCount = 0
+
+    func presentMenuBarWelcome() {
+        presentCallCount += 1
     }
 }
 

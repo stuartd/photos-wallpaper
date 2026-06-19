@@ -8,6 +8,23 @@
 import SwiftUI
 import Photos
 import AppKit
+import Combine
+
+@MainActor
+final class FirstRunStartupController: ObservableObject {
+    private let firstRunNotifier = FirstRunNotifier()
+    private var didScheduleWelcome = false
+
+    func scheduleWelcomeIfNeeded() {
+        guard !didScheduleWelcome else { return }
+        didScheduleWelcome = true
+
+        debugLog("FirstRunStartupController: scheduling first-run welcome.")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            self.firstRunNotifier.notifyIfNeeded()
+        }
+    }
+}
 
 @main
 /// The app is just a menu bar extra plus a long-lived controller.
@@ -21,6 +38,7 @@ import AppKit
 /// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
 ///   the UI.
 struct photos_wallpaperApp: App {
+    @StateObject private var firstRunStartupController: FirstRunStartupController
     @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
@@ -32,10 +50,13 @@ struct photos_wallpaperApp: App {
     private let currentWallpaperAlbumController: CurrentWallpaperAlbumController
 
     init() {
+        let firstRunStartupController = FirstRunStartupController()
         let historyLogger = WallpaperHistoryLogger()
+        _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
         self.historyLogger = historyLogger
         self.currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
+        firstRunStartupController.scheduleWelcomeIfNeeded()
     }
 
     var body: some Scene {
