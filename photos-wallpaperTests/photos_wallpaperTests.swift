@@ -1560,6 +1560,27 @@ struct PhotosWallpaperTests {
         #expect(logger.currentWallpaperIdentifiersSnapshot() == ["SINGLE-ID/L0/001"])
     }
 
+    @Test func wallpaperHistoryLoggerRestoresCurrentWallpaperIdentifiersFromPreviousSession() throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let timestamp = Date(timeIntervalSince1970: 0)
+
+        let firstSessionLogger = WallpaperHistoryLogger(logURL: logURL)
+        firstSessionLogger.recordWallpaperChange(photoName: "IMG_0002.HEIC created 2 Jan 2024 at 12:00:00, id: SECOND-ID/L0/001",
+                                                 screenName: "Screen 2",
+                                                 screenCount: 2,
+                                                 timestamp: timestamp)
+        firstSessionLogger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
+                                                 screenName: "Screen 1",
+                                                 screenCount: 2,
+                                                 timestamp: timestamp)
+
+        let restoredLogger = WallpaperHistoryLogger(logURL: logURL)
+
+        #expect(restoredLogger.currentWallpaperIdentifiersSnapshot() == ["FIRST-ID/L0/001", "SECOND-ID/L0/001"])
+        #expect(try String(contentsOf: logURL, encoding: .utf8) == "")
+    }
+
     @Test func currentWallpaperAlbumAdderAddsDeduplicatedCurrentWallpapersWithoutChangingWallpaper() {
         let firstAsset = makeFakeAsset()
         let secondAsset = makeFakeAsset()

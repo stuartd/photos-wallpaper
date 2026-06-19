@@ -433,6 +433,8 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
 
     private let logURL: URL
     private let logFile: BoundedLogFile
+    private let currentWallpapersURL: URL
+    private let fileManager: FileManager
     private let dateFormatter: DateFormatter
     private var currentWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
@@ -441,12 +443,24 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         let directoryURL = AppLogStorage.directoryURL(fileManager: fileManager)
         let logURL = directoryURL.appendingPathComponent("wallpaper-history.log")
-        self.init(logURL: logURL, fileManager: fileManager, maxLogSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
+        let currentWallpapersURL = directoryURL.appendingPathComponent("current-wallpapers.json")
+        self.init(logURL: logURL,
+                  currentWallpapersURL: currentWallpapersURL,
+                  fileManager: fileManager,
+                  maxLogSizeBytes: maxLogSizeBytes,
+                  retainedLineCount: retainedLineCount)
     }
 
-    init(logURL: URL, fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
+    init(logURL: URL,
+         currentWallpapersURL: URL? = nil,
+         fileManager: FileManager = .default,
+         maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes,
+         retainedLineCount: Int = defaultRetainedLineCount) {
         self.logURL = logURL
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
+        self.currentWallpapersURL = currentWallpapersURL
+            ?? logURL.deletingLastPathComponent().appendingPathComponent("current-wallpapers.json")
+        self.fileManager = fileManager
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB")
@@ -454,6 +468,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         self.dateFormatter = formatter
 
         resetForCurrentSession()
+        loadPersistedCurrentWallpapers()
     }
 
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
@@ -495,6 +510,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             return screenNumber <= screenCount
         }
         currentWallpaperIdentifiersByScreen[screenName] = identifier
+        persistCurrentWallpapers()
     }
 
     private func screenSortOrder(_ lhs: String, _ rhs: String) -> Bool {
@@ -538,6 +554,41 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 
+    private func loadPersistedCurrentWallpapers() {
+        do {
+            guard fileManager.fileExists(atPath: currentWallpapersURL.path) else { return }
+            let data = try Data(contentsOf: currentWallpapersURL)
+            let persistedWallpapers = try JSONDecoder().decode([PersistedCurrentWallpaper].self, from: data)
+            var identifiersByScreen = [String: String]()
+            for wallpaper in persistedWallpapers {
+                let screenName = wallpaper.screenName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let identifier = wallpaper.localIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !screenName.isEmpty, !identifier.isEmpty else { continue }
+                identifiersByScreen[screenName] = identifier
+            }
+            currentWallpaperIdentifiersByScreen = identifiersByScreen
+        } catch {
+            debugLog("WallpaperHistoryLogger: failed to load current wallpaper identifiers: \(error)")
+        }
+    }
+
+    private func persistCurrentWallpapers() {
+        do {
+            let directoryURL = currentWallpapersURL.deletingLastPathComponent()
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            let wallpapers = currentWallpaperIdentifiersByScreen.keys
+                .sorted(by: screenSortOrder)
+                .compactMap { screenName -> PersistedCurrentWallpaper? in
+                    guard let identifier = currentWallpaperIdentifiersByScreen[screenName] else { return nil }
+                    return PersistedCurrentWallpaper(screenName: screenName, localIdentifier: identifier)
+                }
+            let data = try JSONEncoder().encode(wallpapers)
+            try data.write(to: currentWallpapersURL, options: .atomic)
+        } catch {
+            debugLog("WallpaperHistoryLogger: failed to persist current wallpaper identifiers: \(error)")
+        }
+    }
+
     /// Ensures the history file exists and opens it in a read-only app window.
     func openHistoryLog() {
         do {
@@ -554,4 +605,9 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private func updateOpenHistoryWindow(with historyText: String) {
         historyWindow.update(with: historyText)
     }
+}
+
+private struct PersistedCurrentWallpaper: Codable {
+    let screenName: String
+    let localIdentifier: String
 }
