@@ -1,13 +1,93 @@
-### Photos Wallpaper
+# Photos Wallpaper
 
-In previous versions of macOS, you could set your photo library as the wallpaper source, and have it rotate automatically to set a random photo on each monitor at a specified interval [^1].
+Photos Wallpaper is a native macOS menu bar app that brings back random Photos-library wallpaper rotation for modern macOS.
 
-This functionality is no longer available in macOS 26 (Tahoe).[^2]
+I built this from the product side as a Mac user whose usual background is .NET and Windows apps. Before this project I had not written Swift. The project is a case study in directing agentic AI to design, implement, test, package, and iterate a real native app through TestFlight, with me acting as product owner, QA, release manager, and final decision-maker.
 
-Photos Wallpaper recreates random photo wallpaper rotation as a native macOS menu bar app, supporting multiple displays and preset wallpaper change intervals.
+Website: [photos-wallpaper.app](https://photos-wallpaper.app/)
 
-The application has been developed with agentic coding assistance for feature work, tests, and polish, with the aim of a Mac App Store release.
+## Featured Project Summary
 
-[^1]: [This web page](https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) has some information about the original rotating wallpaper functionality (archived [here](https://web.archive.org/web/20260509151722/https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) and [here](http://archive.today/7snxw))
+- **Role:** Product direction, prompt strategy, QA, release management, and final technical decision-making
+- **Background:** Built outside my usual .NET/Windows stack, starting with no Swift experience
+- **Outcome:** Native macOS app currently in TestFlight, with an App Store release as the target
+- **Stack:** Swift, SwiftUI, AppKit, Photos.framework, ServiceManagement, UserNotifications, Xcode, GitHub Actions
+- **Agentic AI use:** Directed AI agents through feature design, implementation, edge-case handling, tests, copy, packaging, and release preparation
+- **Evidence of depth:** Unit tests, CI, privacy documentation, release scripts, app metadata, local diagnostics, and real-world use on my own Mac
 
-[^2]: You can set the wallpaper source to a _folder_ in macOS 26 but that's not the same.
+## Status
+
+- In TestFlight
+- Built as a native macOS menu bar app
+- Intended for Mac App Store release
+- Uses local Photos access only; no accounts, analytics, ads, or server-side storage
+
+## Why This Exists
+
+Older versions of macOS let you use your Photos library as a rotating wallpaper source and choose a random photo at a fixed interval.[^1]
+
+That workflow is no longer available in macOS 26 Tahoe.[^2] You can point wallpaper rotation at a folder, but that is not the same as using the Photos library many Mac users already curate.
+
+Photos Wallpaper recreates that missing workflow as a small native utility.
+
+## What It Does
+
+- Runs from the macOS menu bar
+- Selects random images from the user's Photos library
+- Supports multiple displays
+- Can change wallpaper immediately
+- Supports preset wallpaper schedules
+- Can run at login
+- Handles wake, unlock, and inactive user-session cases
+- Keeps local wallpaper history and runtime diagnostics
+- Can add the current wallpaper photo or photos to a "Photos Wallpaper" album
+- Includes a local privacy document explaining what data is read and written
+
+## Agentic AI Case Study
+
+This project demonstrates directing agentic AI through a domain I did not already know well enough to ship in:
+
+- translating a user problem into a native macOS product
+- steering implementation across SwiftUI, AppKit, Photos.framework, ServiceManagement, UserNotifications, and macOS wallpaper APIs
+- testing permission flows, multi-display behavior, scheduling, login items, sleep/wake behavior, and local logging
+- iterating based on real use on my own Mac
+- preparing the app for TestFlight and App Store review
+
+The repo is evidence that the work went beyond a prototype. It includes unit tests, CI, release scripts, privacy copy, app metadata, app icons, local diagnostics, and distribution-oriented build paths.
+
+## Verification
+
+The test suite covers the app's orchestration layer: scheduling, login prompts, Photos authorization states, screen/session behavior, history logging, and album actions.
+
+To build and test locally:
+
+```bash
+scripts/build_and_test.sh
+```
+
+Or run the Xcode test target directly:
+
+```bash
+xcodebuild test \
+  -project photos-wallpaper.xcodeproj \
+  -scheme photos-wallpaper \
+  -configuration Debug \
+  -destination 'platform=macOS' \
+  CODE_SIGN_IDENTITY=-
+```
+
+## Privacy
+
+Photos Wallpaper works locally on the user's Mac.
+
+It does not upload photos, wallpaper history, diagnostics, or usage data. It does not use accounts, analytics, advertising services, or server-side databases.
+
+See [photos-wallpaper/PRIVACY.md](photos-wallpaper/PRIVACY.md) for the full privacy note bundled with the app.
+
+## Notes
+
+This project is intentionally small in product surface area. The goal is to do one missing Mac workflow well: choose random Photos-library images and keep the desktop wallpaper changing without requiring users to export or duplicate their photo library into folders.
+
+[^1]: [This page](https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) describes the older rotating wallpaper workflow. Archived copies: [Wayback Machine](https://web.archive.org/web/20260509151722/https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac), [archive.today](http://archive.today/7snxw).
+
+[^2]: macOS 26 can rotate wallpapers from a folder, but that is not the same as using the Photos library directly.
