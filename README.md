@@ -1,8 +1,14 @@
 ### [Photos Wallpaper](https://photos-wallpaper.app)
 
-Photos Wallpaper is a native macOS menu bar app that brings back random Photos-library wallpaper rotation for modern macOS.
+Photos Wallpaper is a native macOS menu bar app that brings back random Photos-library wallpaper rotation.
 
-I built this from the product side as a Mac user whose usual background is .NET and Windows apps. Before this project I had not written Swift. The project is a case study in directing agentic AI to design, implement, test, package, and iterate a real native app through TestFlight, with me acting as product owner, QA, release manager, and final decision-maker.
+Older versions of macOS let you use your Photos library as a rotating wallpaper source and choose a random photo at a fixed interval.[^1]
+
+That functionality is no longer available in macOS 26 Tahoe.[^2] You can point wallpaper rotation at a folder, but that is not the same as using the Photos library many Mac users already curate. Photos Wallpaper recreates it as a simple menu bar app.
+
+I built this for two reasons: I really missed the feature, and I wanted to see what it would be like to use agentic AI from the product side as a Mac user whose usual background is .NET and Windows apps. Before this project, I had not written Swift or opened Xcode.
+
+The project is also a case study in directing agentic AI to design, implement, test, package, and iterate a real native app through TestFlight, with me acting as product owner, QA, release manager, and final decision-maker.
 
 ## Featured Project Summary
 
@@ -19,14 +25,6 @@ I built this from the product side as a Mac user whose usual background is .NET 
 - Built as a native macOS menu bar app
 - Intended for Mac App Store release
 - Uses local Photos access only; no accounts, analytics, ads, or server-side storage
-
-## Why This Exists
-
-Older versions of macOS let you use your Photos library as a rotating wallpaper source and choose a random photo at a fixed interval.[^1]
-
-That workflow is no longer available in macOS 26 Tahoe.[^2] You can point wallpaper rotation at a folder, but that is not the same as using the Photos library many Mac users already curate.
-
-Photos Wallpaper recreates that missing workflow as a small native utility.
 
 ## What It Does
 
@@ -89,7 +87,7 @@ scripts/create-local-release.sh
 
 ## Notes
 
-This project is intentionally small in product surface area. The goal is to recreate the lost and missed Mac workflow: choose random Photos-library images and keep the desktop wallpaper changing without requiring users to do anything except choose a schedule..
+This project is intentionally small in product surface area. The goal is to recreate the lost and missed Mac workflow: choose random Photos-library images and keep the desktop wallpaper changing without requiring users to do anything except choose a schedule.
 
 [^1]: [This page](https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac) describes the older rotating wallpaper workflow. Archived copies: [Wayback Machine](https://web.archive.org/web/20260509151722/https://www.wallpaperyapp.com/how-to-have-rotating-wallpapers-on-mac), [archive.today](http://archive.today/7snxw).
 
