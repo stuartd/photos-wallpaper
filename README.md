@@ -47,6 +47,12 @@ It does not upload photos, wallpaper history, diagnostics, or usage data. It doe
 
 See [photos-wallpaper/PRIVACY.md](photos-wallpaper/PRIVACY.md) for the full privacy note bundled with the app.
 
+## License
+
+The source code is licensed under the [MIT License](LICENSE).
+
+The Photos Wallpaper name, app icon, screenshots, and other branding assets are not licensed for reuse.
+
 ## Agentic AI Case Study
 
 This project demonstrates directing agentic AI through a domain and language I did not know well enough to develop and ship in:
