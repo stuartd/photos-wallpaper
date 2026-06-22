@@ -20,8 +20,7 @@ import Testing
 ///
 /// Quick testing glossary:
 /// - `@testable import`: lets the test target see internal symbols from the app target.
-/// - fake/mock/test double: a small stand-in object used to observe calls without touching real
-///   system APIs.
+/// - fake: a small stand-in object used to observe calls without touching real system APIs.
 struct PhotosWallpaperTests {
     @Test func cycleFrequencyAllCasesComeFromConfiguredOptions() {
         #expect(CycleFrequency.allCases == CycleFrequency.options.map(\.frequency))
