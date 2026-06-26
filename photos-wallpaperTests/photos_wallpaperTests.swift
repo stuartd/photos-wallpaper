@@ -1707,8 +1707,19 @@ struct PhotosWallpaperTests {
         #expect(result.alerts.first?.message == "")
     }
 
+    @Test func currentWallpaperAlbumControllerExplainsMissingPhotosInPlainLanguage() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
+                                                             missingLookupIdentifiers: ["ID-1/L0/001"],
+                                                             expectedAlbumAddCount: 0)
+
+        #expect(result.alerts.first?.title == "Wallpaper Photo No Longer in Photos")
+        #expect(result.alerts.first?.message == "One wallpaper photo is no longer in Photos, so it could not be added.")
+    }
+
     private func currentWallpaperAlbumConfirmation(assetCount: Int,
                                                    albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
+                                                   missingLookupIdentifiers: Set<String> = [],
+                                                   expectedAlbumAddCount: Int? = nil,
                                                    expectedAlertTitle: String? = nil) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
@@ -1716,6 +1727,7 @@ struct PhotosWallpaperTests {
         let assets = (0..<assetCount).map { _ in makeFakeAsset() }
         let photoManager = FakePhotoManager(assetsToReturn: assets)
         photoManager.albumAddResults = albumAddResults
+        photoManager.missingLookupIdentifiers = missingLookupIdentifiers
         var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(historyLogger: logger,
                                                         photoManager: photoManager) { title, message in
@@ -1740,7 +1752,8 @@ struct PhotosWallpaperTests {
             #expect(alerts.first?.title == expectedAlertTitle)
         }
         #expect(photoManager.batchLookupRequests == [(1...assetCount).map { "ID-\($0)/L0/001" }])
-        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.map(ObjectIdentifier.init))
+        let expectedAlbumAddCount = expectedAlbumAddCount ?? assetCount
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.prefix(expectedAlbumAddCount).map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
         return (alerts, photoManager)
     }

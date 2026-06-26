@@ -151,7 +151,8 @@ struct CurrentWallpaperAlbumAdder {
                           "")
                 return
             }
-            showAlert("Some Wallpapers Could Not Be Added",
+            showAlert(albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
+                                        failedAddCount: failedAddCount),
                       albumSummary(addedCount: addedCount,
                                    alreadyInAlbumCount: alreadyInAlbumCount,
                                    missingIdentifierCount: missingIdentifierCount,
@@ -180,7 +181,7 @@ struct CurrentWallpaperAlbumAdder {
             parts.append(albumAlreadyInAlbumMessage(alreadyInAlbumCount: alreadyInAlbumCount))
         }
         if missingIdentifierCount > 0 {
-            parts.append("\(missingIdentifierCount) remembered wallpaper photo\(missingIdentifierCount == 1 ? "" : "s") could not be found in Photos.")
+            parts.append(missingPhotosMessage(missingIdentifierCount: missingIdentifierCount))
         }
         if failedAddCount > 0 {
             parts.append("\(failedAddCount) wallpaper photo\(failedAddCount == 1 ? "" : "s") could not be added.")
@@ -211,6 +212,32 @@ struct CurrentWallpaperAlbumAdder {
         default:
             return "\(alreadyInAlbumCount) wallpaper photos were already in the Photos Wallpaper album."
         }
+    }
+
+    private func missingPhotosMessage(missingIdentifierCount: Int) -> String {
+        switch missingIdentifierCount {
+        case 1:
+            return "One wallpaper photo is no longer in Photos, so it could not be added."
+        default:
+            return "\(missingIdentifierCount) wallpaper photos are no longer in Photos, so they could not be added."
+        }
+    }
+
+    private func albumFailureTitle(missingIdentifierCount: Int, failedAddCount: Int) -> String {
+        if failedAddCount == 0 {
+            switch missingIdentifierCount {
+            case 1:
+                return "Wallpaper Photo No Longer in Photos"
+            default:
+                return "Wallpaper Photos No Longer in Photos"
+            }
+        }
+
+        if missingIdentifierCount == 0, failedAddCount == 1 {
+            return "Wallpaper Photo Could Not Be Added"
+        }
+
+        return "Some Wallpaper Photos Could Not Be Added"
     }
 
     private static func presentAlert(title: String, message: String) {
