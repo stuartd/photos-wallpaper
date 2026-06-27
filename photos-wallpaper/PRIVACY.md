@@ -1,19 +1,19 @@
 # Photos Wallpaper Privacy
 
-Photos Wallpaper is a local macOS menu bar app. It uses your Photos library to choose images for your desktop wallpaper and, when you ask it to, add current wallpaper photos to a Photos album. All of that work happens on your Mac.
+Photos Wallpaper is a local macOS menu bar app. It uses your Photos library to choose images for your desktop wallpaper and, if you ask it to, it can add the current wallpaper photo(s) to a Photos album, called 'Photos Wallpaper'. All of that work happens on your Mac.
 
 ## The Short Version
 
 - Your photos are not uploaded.
 - Your wallpaper history is not uploaded.
 - There are no accounts, analytics, advertising services, or server-side databases.
-- The app reads from your Photos library, asks macOS to set wallpaper, can add selected wallpaper photos to a Photos album, and writes a small amount of local app data.
+- The app reads from your Photos library, asks macOS to set an image as wallpaper, can add selected wallpaper photos to a Photos album, and writes a small amount of local app data.
 
 ## Photos Access
 
-Photos Wallpaper asks macOS for permission to read and update your Photos library. That access is needed so the app can pick photo assets, render image data for wallpaper-sized previews, and add current wallpaper photos to the Photos Wallpaper album when you choose that menu item.
+Photos Wallpaper asks macOS for permission to read and update your Photos library. That access is needed so the app can pick photo assets, render image data for the wallpaper, and add current wallpaper photos to the Photos Wallpaper album if you choose that menu item.
 
-Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit your photos. The only Photos library change it makes is creating the Photos Wallpaper album if needed and adding selected existing photo assets to that album when you ask it to.
+Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit your photos. The only Photos library change it makes is creating the Photos Wallpaper album if needed and adding selected existing photo assets to that album if you ask it to.
 
 ## Photos Wallpaper Album
 
@@ -42,7 +42,7 @@ History entries may include:
 - the display name or screen number
 - the time the wallpaper was applied
 
-The history log is cleared when Photos Wallpaper starts. It is kept locally and is not sent anywhere by the app.
+History entries are kept for the current app session and cleared when Photos Wallpaper starts, so the app does not build up a long-term record of wallpaper activity. The history log is kept locally and is not sent anywhere by the app.
 
 ## Runtime Diagnostics
 
@@ -85,4 +85,4 @@ The data flow is intentionally simple:
 4. If you choose "Add Current Wallpaper(s) to Photos Wallpaper Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
 5. It writes local history and diagnostics entries as described above.
 
-That is the whole loop.
+© Stuart Dunkeld 2026

@@ -69,6 +69,39 @@ struct PhotosWallpaperTests {
         #expect(presenter.presentCallCount == 0)
     }
 
+    @Test func firstRunNotifierCanDismissWelcomeWindow() {
+        let presenter = FakeFirstRunWelcomePresenter()
+        let notifier = FirstRunNotifier(defaults: FakeDefaults(), presenter: presenter)
+
+        notifier.dismissWelcomeIfPresented()
+
+        #expect(presenter.dismissCallCount == 1)
+    }
+
+    @Test func firstRunStartupControllerDelaysWelcomeWhileModalWindowIsOpen() {
+        let defaults = FakeDefaults()
+        let presenter = FakeFirstRunWelcomePresenter()
+        let notifier = FirstRunNotifier(defaults: defaults, presenter: presenter)
+        let modalWindowProvider = FakeModalWindowProvider(hasModalWindow: true)
+        let scheduler = FakeFirstRunWelcomeScheduler()
+        let controller = FirstRunStartupController(firstRunNotifier: notifier,
+                                                   modalWindowProvider: modalWindowProvider,
+                                                   welcomeScheduler: scheduler)
+
+        controller.scheduleWelcomeIfNeeded()
+        scheduler.fire(at: 0)
+
+        #expect(presenter.presentCallCount == 0)
+        #expect(!defaults.bool(forKey: "didShowMenuBarWelcomeWindow"))
+        #expect(scheduler.scheduledDelays == [1, 0.5])
+
+        modalWindowProvider.hasModalWindow = false
+        scheduler.fire(at: 1)
+
+        #expect(presenter.presentCallCount == 1)
+        #expect(defaults.bool(forKey: "didShowMenuBarWelcomeWindow"))
+    }
+
     @Test func appDocumentOpenerOpensSupportURL() {
         let urlOpener = FakeExternalURLOpener()
         let documentOpener = AppDocumentOpener(urlOpener: urlOpener)
@@ -1480,9 +1513,10 @@ struct PhotosWallpaperTests {
 
         logger.openRuntimeLog()
         logger.record("hello", timestamp: timestamp)
+        let expectedLogText = "Session log. This file starts fresh each time Photos Wallpaper launches.\n\n[\(formatter.string(from: timestamp))] hello\n"
 
         let didUpdateWindow = await waitForCondition {
-            logger.displayedRuntimeLogTextForTesting == "[\(formatter.string(from: timestamp))] hello\n"
+            logger.displayedRuntimeLogTextForTesting == expectedLogText
         }
 
         #expect(didUpdateWindow)
@@ -1498,6 +1532,29 @@ struct PhotosWallpaperTests {
 
         let text = try String(contentsOf: logURL, encoding: .utf8)
         #expect(text == "")
+    }
+
+    @Test func wallpaperHistoryLoggerShowsSessionExplanationInAppWindow() async throws {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let timestamp = Date(timeIntervalSince1970: 1_717_974_000)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss"
+
+        logger.openHistoryLog()
+        logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
+                                      screenName: "Screen 1",
+                                      screenCount: 1,
+                                      timestamp: timestamp)
+        let expectedHistoryText = "Session history. This list starts fresh each time Photos Wallpaper launches.\n\nPhoto ID FIRST-ID/L0/001 was set as the wallpaper on \(formatter.string(from: timestamp)) (IMG_0001.HEIC created 1 Jan 2024 at 12:00:00)\n"
+
+        let didUpdateWindow = await waitForCondition {
+            logger.displayedHistoryTextForTesting == expectedHistoryText
+        }
+
+        #expect(didUpdateWindow)
     }
 
     @Test func wallpaperHistoryEntryFormatterBuildsExpectedMultipleScreenLine() {
@@ -1987,9 +2044,36 @@ private final class FakeStartAtLoginPromptPresenter: StartAtLoginPromptPresentin
 
 private final class FakeFirstRunWelcomePresenter: FirstRunWelcomePresenting {
     private(set) var presentCallCount = 0
+    private(set) var dismissCallCount = 0
 
     func presentMenuBarWelcome() {
         presentCallCount += 1
+    }
+
+    func dismissMenuBarWelcome() {
+        dismissCallCount += 1
+    }
+}
+
+private final class FakeModalWindowProvider: AppModalWindowProviding {
+    var hasModalWindow: Bool
+
+    init(hasModalWindow: Bool) {
+        self.hasModalWindow = hasModalWindow
+    }
+}
+
+private final class FakeFirstRunWelcomeScheduler: FirstRunWelcomeScheduling {
+    private(set) var scheduledDelays: [TimeInterval] = []
+    private var scheduledActions: [@MainActor () -> Void] = []
+
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void) {
+        scheduledDelays.append(delay)
+        scheduledActions.append(action)
+    }
+
+    func fire(at index: Int) {
+        scheduledActions[index]()
     }
 }
 
