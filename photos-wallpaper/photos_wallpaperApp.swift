@@ -11,18 +11,75 @@ import AppKit
 import Combine
 
 @MainActor
+protocol AppModalWindowProviding {
+    var hasModalWindow: Bool { get }
+}
+
+struct AppKitModalWindowProvider: AppModalWindowProviding {
+    var hasModalWindow: Bool {
+        NSApp.modalWindow != nil
+    }
+}
+
+@MainActor
+protocol FirstRunWelcomeScheduling {
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void)
+}
+
+struct MainQueueFirstRunWelcomeScheduler: FirstRunWelcomeScheduling {
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            Task { @MainActor in
+                action()
+            }
+        }
+    }
+}
+
+@MainActor
 final class FirstRunStartupController: ObservableObject {
-    private let firstRunNotifier = FirstRunNotifier()
+    private static let initialWelcomeDelay: TimeInterval = 1
+    private static let modalRetryDelay: TimeInterval = 0.5
+
+    private let firstRunNotifier: FirstRunNotifier
+    private let modalWindowProvider: AppModalWindowProviding
+    private let welcomeScheduler: FirstRunWelcomeScheduling
     private var didScheduleWelcome = false
+
+    init(firstRunNotifier: FirstRunNotifier? = nil,
+         modalWindowProvider: AppModalWindowProviding? = nil,
+         welcomeScheduler: FirstRunWelcomeScheduling? = nil) {
+        self.firstRunNotifier = firstRunNotifier ?? FirstRunNotifier()
+        self.modalWindowProvider = modalWindowProvider ?? AppKitModalWindowProvider()
+        self.welcomeScheduler = welcomeScheduler ?? MainQueueFirstRunWelcomeScheduler()
+    }
 
     func scheduleWelcomeIfNeeded() {
         guard !didScheduleWelcome else { return }
         didScheduleWelcome = true
 
         debugLog("FirstRunStartupController: scheduling first-run welcome.")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            self.firstRunNotifier.notifyIfNeeded()
+        scheduleWelcomeAttempt(after: Self.initialWelcomeDelay)
+    }
+
+    func dismissWelcomeIfPresented() {
+        firstRunNotifier.dismissWelcomeIfPresented()
+    }
+
+    private func scheduleWelcomeAttempt(after delay: TimeInterval) {
+        welcomeScheduler.schedule(after: delay) { [weak self] in
+            self?.presentWelcomeWhenReady()
         }
+    }
+
+    private func presentWelcomeWhenReady() {
+        guard !modalWindowProvider.hasModalWindow else {
+            debugLog("FirstRunStartupController: delaying first-run welcome because a modal window is open.")
+            scheduleWelcomeAttempt(after: Self.modalRetryDelay)
+            return
+        }
+
+        firstRunNotifier.notifyIfNeeded()
     }
 }
 
@@ -103,6 +160,7 @@ struct photos_wallpaperApp: App {
             Divider()
 
             Button("About Photos Wallpaper") {
+                firstRunStartupController.dismissWelcomeIfPresented()
                 isAboutPanelOpen = true
                 defer { isAboutPanelOpen = false }
                 documentOpener.openAboutPanel()
