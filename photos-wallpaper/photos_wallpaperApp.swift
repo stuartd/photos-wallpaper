@@ -109,8 +109,15 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isAboutPanelOpen)
 
-            Button("Privacy") {
+            Divider()
+
+            Button("Privacy Policy") {
                 documentOpener.openPrivacyDocument()
+            }
+            .disabled(isAboutPanelOpen)
+
+            Button("Contact Support…") {
+                documentOpener.openSupportPage()
             }
             .disabled(isAboutPanelOpen)
 

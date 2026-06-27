@@ -69,6 +69,14 @@ struct PhotosWallpaperTests {
         #expect(presenter.presentCallCount == 0)
     }
 
+    @Test func appDocumentOpenerOpensSupportURL() {
+        let urlOpener = FakeExternalURLOpener()
+        let documentOpener = AppDocumentOpener(urlOpener: urlOpener)
+
+        documentOpener.openSupportPage()
+
+        #expect(urlOpener.openedURLs.map(\.absoluteString) == ["https://photos-wallpaper.app/#support"])
+    }
 
     #if DEBUG
     @Test func debugBuildIncludesOneSecondStressTestFrequency() {
@@ -2070,6 +2078,16 @@ private final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
 
     func notifyPhotoLibraryPermissionDenied() {
         photoLibraryPermissionDeniedNotificationCount += 1
+    }
+}
+
+private final class FakeExternalURLOpener: ExternalURLOpening {
+    private(set) var openedURLs: [URL] = []
+    var openResult = true
+
+    func open(_ url: URL) -> Bool {
+        openedURLs.append(url)
+        return openResult
     }
 }
 

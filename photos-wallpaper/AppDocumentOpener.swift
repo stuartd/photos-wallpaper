@@ -4,11 +4,31 @@ import AppKit
 protocol AppDocumentOpening {
     func openAboutPanel()
     func openPrivacyDocument()
+    func openSupportPage()
 }
 
+protocol ExternalURLOpening {
+    @discardableResult
+    func open(_ url: URL) -> Bool
+}
+
+extension NSWorkspace: ExternalURLOpening {}
+
 final class AppDocumentOpener: AppDocumentOpening {
+    private static let supportURL = URL(string: "https://photos-wallpaper.app/#support")!
+
     // Keep a strong reference to the window so it isn't deallocated immediately
     private var privacyWindow: NSWindow?
+    private var privacyWindowCloseObserver: NSObjectProtocol?
+    private let urlOpener: ExternalURLOpening
+
+    init(urlOpener: ExternalURLOpening = NSWorkspace.shared) {
+        self.urlOpener = urlOpener
+    }
+
+    deinit {
+        clearPrivacyWindowCloseObserver()
+    }
 
     func openAboutPanel() {
         let iconView = NSImageView(image: appIconImage)
@@ -75,6 +95,12 @@ final class AppDocumentOpener: AppDocumentOpening {
     }
 
     func openPrivacyDocument() {
+        if let privacyWindow {
+            privacyWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         // Locate the PRIVACY.md in the app bundle
         guard let privacyURL = Bundle.main.url(forResource: "PRIVACY", withExtension: "md") else {
             debugLog("AppDocumentOpener: PRIVACY.md not found in bundle")
@@ -129,14 +155,20 @@ final class AppDocumentOpener: AppDocumentOpening {
         self.privacyWindow = window
 
         // Observe close to release our reference
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-            if self?.privacyWindow === window {
-                self?.privacyWindow = nil
-            }
+        privacyWindowCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            self?.privacyWindow = nil
+            self?.clearPrivacyWindowCloseObserver()
         }
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func openSupportPage() {
+        guard urlOpener.open(Self.supportURL) else {
+            debugLog("AppDocumentOpener: failed to open support URL \(Self.supportURL.absoluteString)")
+            return
+        }
     }
 
     private var aboutVersionText: String {
@@ -159,6 +191,13 @@ final class AppDocumentOpener: AppDocumentOpening {
 
         guard !details.isEmpty else { return "Version \(version)" }
         return "Version \(version) (\(details.joined(separator: ", ")))"
+    }
+
+    private func clearPrivacyWindowCloseObserver() {
+        if let privacyWindowCloseObserver {
+            NotificationCenter.default.removeObserver(privacyWindowCloseObserver)
+            self.privacyWindowCloseObserver = nil
+        }
     }
 
     private func makePrivacyAttributedString(from markdownText: String) -> NSAttributedString {
