@@ -342,6 +342,7 @@ final class AppRuntimeLogger {
 
     private static let defaultMaxLogSizeBytes: UInt64 = 5 * 1024 * 1024
     private static let defaultRetainedLineCount = 100
+    private static let sessionLogExplanation = "Runtime log. This file starts fresh each time Photos Wallpaper launches."
 
     private let logURL: URL
     private let logFile: BoundedLogFile
@@ -382,7 +383,7 @@ final class AppRuntimeLogger {
                 return try String(contentsOf: logURL, encoding: .utf8)
             }
             DispatchQueue.main.async {
-                self.logWindow.show(runtimeText)
+                self.logWindow.show(Self.displayText(for: runtimeText))
             }
         } catch {
             #if DEBUG
@@ -421,8 +422,12 @@ final class AppRuntimeLogger {
     private func updateOpenRuntimeLogWindow() {
         guard let runtimeText = try? String(contentsOf: logURL, encoding: .utf8) else { return }
         DispatchQueue.main.async {
-            self.logWindow.update(with: runtimeText)
+            self.logWindow.update(with: Self.displayText(for: runtimeText))
         }
+    }
+
+    private static func displayText(for logText: String) -> String {
+        sessionLogExplanation + "\n\n" + logText
     }
 }
 
@@ -430,6 +435,7 @@ final class AppRuntimeLogger {
 final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private static let defaultMaxLogSizeBytes: UInt64 = 10 * 1024 * 1024
     private static let defaultRetainedLineCount = 100
+    private static let sessionHistoryExplanation = "Wallpaper history. This list starts fresh each time Photos Wallpaper launches."
 
     private let logURL: URL
     private let logFile: BoundedLogFile
@@ -596,14 +602,25 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
                 try logFile.ensureLogFileExists()
                 return try String(contentsOf: logURL, encoding: .utf8)
             }
-            historyWindow.show(historyText)
+            historyWindow.show(Self.displayText(for: historyText))
         } catch {
             debugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
         }
     }
 
     private func updateOpenHistoryWindow(with historyText: String) {
-        historyWindow.update(with: historyText)
+        historyWindow.update(with: Self.displayText(for: historyText))
+    }
+
+    #if DEBUG
+    @MainActor
+    var displayedHistoryTextForTesting: String? {
+        historyWindow.displayedTextForTesting
+    }
+    #endif
+
+    private static func displayText(for historyText: String) -> String {
+        sessionHistoryExplanation + "\n\n" + historyText
     }
 }
 
