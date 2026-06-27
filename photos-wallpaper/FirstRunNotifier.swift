@@ -3,10 +3,16 @@ import AppKit
 
 protocol FirstRunWelcomePresenting {
     func presentMenuBarWelcome()
+    func dismissMenuBarWelcome()
 }
 
 final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting {
     private var panel: NSPanel?
+    private var panelCloseObserver: NSObjectProtocol?
+
+    deinit {
+        clearPanelCloseObserver()
+    }
 
     func presentMenuBarWelcome() {
         if let panel {
@@ -71,20 +77,30 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         panel.center()
 
         self.panel = panel
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
-                                               object: panel,
-                                               queue: .main) { [weak self] _ in
-            if self?.panel === panel {
-                self?.panel = nil
-            }
+        panelCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+                                                                    object: panel,
+                                                                    queue: .main) { [weak self] _ in
+            self?.panel = nil
+            self?.clearPanelCloseObserver()
         }
 
         bringToFront(panel)
         debugLog("FirstRunNotifier: showed menu bar welcome panel.")
     }
 
+    func dismissMenuBarWelcome() {
+        panel?.close()
+    }
+
     @objc private func closeWelcomePanel() {
         panel?.close()
+    }
+
+    private func clearPanelCloseObserver() {
+        if let panelCloseObserver {
+            NotificationCenter.default.removeObserver(panelCloseObserver)
+            self.panelCloseObserver = nil
+        }
     }
 
     private func bringToFront(_ panel: NSPanel) {
@@ -116,5 +132,9 @@ final class FirstRunNotifier {
         defaults.set(true, forKey: Self.didShowMenuBarWelcomeDefaultsKey)
         debugLog("FirstRunNotifier: marking menu bar welcome panel as shown.")
         presenter.presentMenuBarWelcome()
+    }
+
+    func dismissWelcomeIfPresented() {
+        presenter.dismissMenuBarWelcome()
     }
 }
