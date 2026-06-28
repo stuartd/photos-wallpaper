@@ -426,7 +426,7 @@ final class AppRuntimeLogger {
         }
     }
 
-    private static func displayText(for logText: String) -> String {
+    static func displayText(for logText: String) -> String {
         sessionLogExplanation + "\n\n" + logText
     }
 }
@@ -619,7 +619,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     }
     #endif
 
-    private static func displayText(for historyText: String) -> String {
+    static func displayText(for historyText: String) -> String {
         sessionHistoryExplanation + "\n\n" + historyText
     }
 }

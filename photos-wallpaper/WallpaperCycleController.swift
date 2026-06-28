@@ -591,12 +591,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                     self?.tick(trigger: .unlock)
                 }
             }
-            if isConfiguringInitialSchedule {
-                debugLog("WallpaperCycleController: running login wallpaper schedule after app launch.")
-                Task { @MainActor in
-                    self.tick(trigger: .unlock)
-                }
-            }
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.tick(trigger: .wake)

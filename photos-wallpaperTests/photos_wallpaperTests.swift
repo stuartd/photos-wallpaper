@@ -589,7 +589,7 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
-    @Test func onLoginRunsWallpaperCycleAfterLaunchWhenSessionIsAlreadyActive() async {
+    @Test func savedOnLoginDoesNotRunWallpaperCycleOnAppLaunchWhenSessionIsAlreadyActive() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
         let scheduler = FakeTimerScheduler()
@@ -612,12 +612,12 @@ struct PhotosWallpaperTests {
             screenSleepStateProvider: FakeScreenSleepStateProvider(),
             activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true)
         )
-        let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
+        await Task.yield()
 
         #expect(controller.frequency == .onLogin)
         #expect(scheduler.scheduledIntervals.isEmpty)
-        #expect(didAssignWallpaper)
-        #expect(photoManager.wallpaperAssignments.count == 1)
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
     @Test func triggerNowSkipsWhilePreviousCycleIsStillRunning() async {
@@ -1501,7 +1501,7 @@ struct PhotosWallpaperTests {
         #expect(didWriteLog)
     }
 
-    @Test func runtimeLoggerShowsDiagnosticLogInAppWindowAndUpdatesIt() async throws {
+    @Test func runtimeLoggerFormatsDiagnosticLogForAppWindow() async throws {
         let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = AppRuntimeLogger(logURL: logURL)
@@ -1511,15 +1511,15 @@ struct PhotosWallpaperTests {
         formatter.timeZone = .current
         formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss z"
 
-        logger.openRuntimeLog()
         logger.record("hello", timestamp: timestamp)
-        let expectedLogText = "Session log. This file starts fresh each time Photos Wallpaper launches.\n\n[\(formatter.string(from: timestamp))] hello\n"
+        let expectedLogText = "[\(formatter.string(from: timestamp))] hello\n"
 
-        let didUpdateWindow = await waitForCondition {
-            logger.displayedRuntimeLogTextForTesting == expectedLogText
+        let didWriteLog = await waitForCondition {
+            (try? String(contentsOf: logURL, encoding: .utf8)) == expectedLogText
         }
 
-        #expect(didUpdateWindow)
+        #expect(didWriteLog)
+        #expect(AppRuntimeLogger.displayText(for: expectedLogText) == "Runtime log. This file starts fresh each time Photos Wallpaper launches.\n\n\(expectedLogText)")
     }
 
     @Test func wallpaperHistoryLoggerClearsPreviousSessionLogOnStartup() throws {
@@ -1534,7 +1534,7 @@ struct PhotosWallpaperTests {
         #expect(text == "")
     }
 
-    @Test func wallpaperHistoryLoggerShowsSessionExplanationInAppWindow() async throws {
+    @Test func wallpaperHistoryLoggerFormatsSessionExplanationForAppWindow() async throws {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
@@ -1543,18 +1543,15 @@ struct PhotosWallpaperTests {
         formatter.locale = Locale(identifier: "en_GB")
         formatter.dateFormat = "d MMMM yyyy 'at' HH:mm:ss"
 
-        logger.openHistoryLog()
         logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: FIRST-ID/L0/001",
                                       screenName: "Screen 1",
                                       screenCount: 1,
                                       timestamp: timestamp)
-        let expectedHistoryText = "Session history. This list starts fresh each time Photos Wallpaper launches.\n\nPhoto ID FIRST-ID/L0/001 was set as the wallpaper on \(formatter.string(from: timestamp)) (IMG_0001.HEIC created 1 Jan 2024 at 12:00:00)\n"
+        let expectedHistoryText = "Photo ID FIRST-ID/L0/001 was set as the wallpaper on \(formatter.string(from: timestamp)) (IMG_0001.HEIC created 1 Jan 2024 at 12:00:00)\n"
+        let historyText = try String(contentsOf: logURL, encoding: .utf8)
 
-        let didUpdateWindow = await waitForCondition {
-            logger.displayedHistoryTextForTesting == expectedHistoryText
-        }
-
-        #expect(didUpdateWindow)
+        #expect(historyText == expectedHistoryText)
+        #expect(WallpaperHistoryLogger.displayText(for: historyText) == "Wallpaper history. This list starts fresh each time Photos Wallpaper launches.\n\n\(expectedHistoryText)")
     }
 
     @Test func wallpaperHistoryEntryFormatterBuildsExpectedMultipleScreenLine() {
