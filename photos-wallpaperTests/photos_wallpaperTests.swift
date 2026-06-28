@@ -519,11 +519,12 @@ struct PhotosWallpaperTests {
         #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
-    @Test func changingFrequencyToOnLoginOrUnlockDoesNotRunWallpaperCycle() {
+    @Test func changingFrequencyToOnLoginMarksCurrentSessionWithoutRunningWallpaperCycle() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.fiveMinutes.rawValue
         let scheduler = FakeTimerScheduler()
         let photoManager = FakePhotoManager()
+        let loginSessionIdentifierProvider = FakeLoginSessionIdentifierProvider(identifier: 42)
         guard let baseScreen = NSScreen.screens.first else {
             Issue.record("Expected at least one screen for wallpaper tests.")
             return
@@ -535,16 +536,44 @@ struct PhotosWallpaperTests {
             notifier: FakeWallpaperCycleNotifier(),
             screenProvider: FakeScreenProvider(screens: [baseScreen]),
             wakeEventObserver: FakeWakeEventObserver(),
-            timerScheduler: scheduler
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: FakeActiveUserSessionProvider(),
+            loginSessionIdentifierProvider: loginSessionIdentifierProvider,
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 100),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 100))
         )
 
         let originalTimer = scheduler.createdTimers[0]
         controller.frequency = .onLogin
 
         #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.onLogin.rawValue)
+        #expect(defaults.integer(forKey: "lastHandledLoginSessionIdentifier") == 42)
         #expect(originalTimer.invalidateCallCount == 1)
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
+
+        let relaunchedPhotoManager = FakePhotoManager()
+        _ = WallpaperCycleController(
+            photoManager: relaunchedPhotoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: FakeTimerScheduler(),
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: FakeActiveUserSessionProvider(),
+            loginSessionIdentifierProvider: loginSessionIdentifierProvider,
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 200),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 100))
+        )
+        await Task.yield()
+
+        #expect(relaunchedPhotoManager.getRandomPhotosCallCount == 0)
+        #expect(relaunchedPhotoManager.wallpaperAssignments.isEmpty)
     }
 
     @Test func onLoginRunsWallpaperCycleWhenWakeEventFires() async {
@@ -620,9 +649,10 @@ struct PhotosWallpaperTests {
         #expect(photoManager.wallpaperAssignments.count == 1)
     }
 
-    @Test func savedOnLoginDoesNotRunWallpaperCycleOnAppLaunchWhenSessionIsAlreadyActive() async {
+    @Test func savedOnLoginDoesNotRunWallpaperCycleOnAppLaunchWhenLoginSessionWasAlreadyHandled() async {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
+        defaults.storage["lastHandledLoginSessionIdentifier"] = 42
         let scheduler = FakeTimerScheduler()
         let activeUserSessionEventObserver = FakeActiveUserSessionEventObserver()
         let photoManager = FakePhotoManager()
@@ -641,11 +671,85 @@ struct PhotosWallpaperTests {
             activeUserSessionEventObserver: activeUserSessionEventObserver,
             timerScheduler: scheduler,
             screenSleepStateProvider: FakeScreenSleepStateProvider(),
-            activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true)
+            activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true),
+            loginSessionIdentifierProvider: FakeLoginSessionIdentifierProvider(identifier: 42),
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 100),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 100))
         )
         await Task.yield()
 
         #expect(controller.frequency == .onLogin)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func savedOnLoginRunsWallpaperCycleOnAppLaunchForNewLoginSession() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
+        defaults.storage["lastHandledLoginSessionIdentifier"] = 41
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true),
+            loginSessionIdentifierProvider: FakeLoginSessionIdentifierProvider(identifier: 42),
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 102),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 100))
+        )
+        await Task.yield()
+
+        #expect(controller.frequency == .onLogin)
+        #expect(defaults.integer(forKey: "lastHandledLoginSessionIdentifier") == 42)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func savedOnLoginDoesNotRunWallpaperCycleOnAppLaunchWhenLaunchIsNotNearLogin() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
+        defaults.storage["lastHandledLoginSessionIdentifier"] = 41
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true),
+            loginSessionIdentifierProvider: FakeLoginSessionIdentifierProvider(identifier: 42),
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 500),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 100))
+        )
+        await Task.yield()
+
+        #expect(controller.frequency == .onLogin)
+        #expect(defaults.integer(forKey: "lastHandledLoginSessionIdentifier") == 42)
         #expect(scheduler.scheduledIntervals.isEmpty)
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
@@ -2261,6 +2365,23 @@ private final class FakeActiveUserSessionProvider: ActiveUserSessionProviding {
     init(appOwnsActiveConsoleSession: Bool = true) {
         self.appOwnsActiveConsoleSession = appOwnsActiveConsoleSession
     }
+}
+
+private final class FakeLoginSessionIdentifierProvider: LoginSessionIdentifying {
+    var currentLoginSessionIdentifier: Int?
+
+    init(identifier: Int?) {
+        self.currentLoginSessionIdentifier = identifier
+    }
+}
+
+private struct FakeStartAtLoginStatusProvider: StartAtLoginStatusProviding {
+    let isStartAtLoginEnabled: Bool
+}
+
+private struct FakeLoginLaunchTimingProvider: LoginLaunchTimingProviding {
+    let appLaunchDate: Date?
+    let consoleLoginDate: Date?
 }
 
 private enum TestError: Error {

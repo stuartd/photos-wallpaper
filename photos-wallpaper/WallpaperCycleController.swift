@@ -3,6 +3,8 @@ import SwiftUI
 import AppKit
 import Combine
 import Photos
+import Security
+import ServiceManagement
 import SystemConfiguration
 import UserNotifications
 
@@ -165,6 +167,19 @@ protocol ActiveUserSessionEventObserving {
     var appOwnsActiveConsoleSession: Bool { get }
 }
 
+protocol LoginSessionIdentifying {
+    var currentLoginSessionIdentifier: Int? { get }
+}
+
+protocol StartAtLoginStatusProviding {
+    var isStartAtLoginEnabled: Bool { get }
+}
+
+protocol LoginLaunchTimingProviding {
+    var appLaunchDate: Date? { get }
+    var consoleLoginDate: Date? { get }
+}
+
 final class NotificationWakeEventObservation: WakeEventObservation {
     private let center: NotificationCenter
     private var token: NSObjectProtocol?
@@ -277,6 +292,36 @@ struct AppKitActiveUserSessionEventObserver: ActiveUserSessionEventObserving {
     var appOwnsActiveConsoleSession: Bool { true }
 }
 
+struct SecurityLoginSessionIdentifierProvider: LoginSessionIdentifying {
+    var currentLoginSessionIdentifier: Int? {
+        var sessionID = SecuritySessionId()
+        var attributes: SessionAttributeBits = []
+        let status = SessionGetInfo(callerSecuritySession, &sessionID, &attributes)
+        guard status == errSessionSuccess,
+              sessionID != noSecuritySession,
+              attributes.contains(.sessionHasGraphicAccess) else {
+            return nil
+        }
+        return Int(sessionID)
+    }
+}
+
+struct ServiceManagementStartAtLoginStatusProvider: StartAtLoginStatusProviding {
+    var isStartAtLoginEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+}
+
+struct AppKitLoginLaunchTimingProvider: LoginLaunchTimingProviding {
+    var appLaunchDate: Date? {
+        NSRunningApplication.current.launchDate ?? Date()
+    }
+
+    var consoleLoginDate: Date? {
+        (try? FileManager.default.attributesOfItem(atPath: "/dev/console")[.modificationDate]) as? Date
+    }
+}
+
 protocol TimerScheduling {
     func scheduledTimer(interval: TimeInterval, repeats: Bool, block: @escaping () -> Void) -> CancellableTimer
 }
@@ -368,7 +413,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
+    private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
     private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
+    private static let loginLaunchWindow: TimeInterval = 5 * 60
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
     private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
 
@@ -400,6 +447,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var activeUserSessionObservation: ActiveUserSessionEventObservation?
     private let screenSleepStateProvider: ScreenSleepStateProviding
     private let activeUserSessionProvider: ActiveUserSessionProviding
+    private let loginSessionIdentifierProvider: LoginSessionIdentifying
+    private let startAtLoginStatusProvider: StartAtLoginStatusProviding
+    private let loginLaunchTimingProvider: LoginLaunchTimingProviding
     private let preflightsPhotoAccessWhenScheduling: Bool
     private let startsScheduleAutomatically: Bool
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
@@ -411,6 +461,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var hasLoggedDeferredScheduledCycle = false
     private var wakeGraceEndsAt: Date?
     private var isConfiguringInitialSchedule = true
+    private var pendingInitialLoginSessionIdentifier: Int?
 
     /// Production initializer used by the app.
     convenience init() {
@@ -428,6 +479,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   timerScheduler: FoundationTimerScheduler(),
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: SystemActiveUserSessionProvider(),
+                  loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
+                  startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
+                  loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
                   legacyDefaultsURL: Self.defaultLegacyDefaultsURL,
                   preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests,
                   startsScheduleAutomatically: !Self.isRunningUnitTests)
@@ -453,6 +507,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   timerScheduler: timerScheduler,
                   screenSleepStateProvider: AppKitScreenSleepStateProvider(),
                   activeUserSessionProvider: AlwaysActiveUserSessionProvider(),
+                  loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
+                  startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
+                  loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
                   legacyDefaultsURL: legacyDefaultsURL,
                   preflightsPhotoAccessWhenScheduling: true)
     }
@@ -467,6 +524,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
+         loginSessionIdentifierProvider: LoginSessionIdentifying = SecurityLoginSessionIdentifierProvider(),
+         startAtLoginStatusProvider: StartAtLoginStatusProviding = ServiceManagementStartAtLoginStatusProvider(),
+         loginLaunchTimingProvider: LoginLaunchTimingProviding = AppKitLoginLaunchTimingProvider(),
          legacyDefaultsURL: URL? = nil,
          preflightsPhotoAccessWhenScheduling: Bool = true,
          startsScheduleAutomatically: Bool = true) {
@@ -480,6 +540,9 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.timerScheduler = timerScheduler
         self.screenSleepStateProvider = screenSleepStateProvider
         self.activeUserSessionProvider = activeUserSessionProvider
+        self.loginSessionIdentifierProvider = loginSessionIdentifierProvider
+        self.startAtLoginStatusProvider = startAtLoginStatusProvider
+        self.loginLaunchTimingProvider = loginLaunchTimingProvider
         self.preflightsPhotoAccessWhenScheduling = preflightsPhotoAccessWhenScheduling
         self.startsScheduleAutomatically = startsScheduleAutomatically
         if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
@@ -560,6 +623,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         wakeObservation = nil
         activeUserSessionObservation?.invalidate()
         activeUserSessionObservation = nil
+        pendingInitialLoginSessionIdentifier = nil
 
         guard let frequency else {
             clearStoredScheduledCycleDueAt()
@@ -588,7 +652,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             logScheduledWallpaperChanges(for: frequency)
             activeUserSessionObservation = activeUserSessionEventObserver.observeSessionDidBecomeActive { [weak self] in
                 Task { @MainActor [weak self] in
-                    self?.tick(trigger: .unlock)
+                    self?.handleLoginScheduleSessionBecameActive()
                 }
             }
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
@@ -596,6 +660,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                     self?.tick(trigger: .wake)
                 }
             }
+            configureLoginCycleAfterScheduleSetup()
         case .minute, .fiveMinutes, .fifteenMinutes, .thirtyMinutes, .hour, .day:
             ensureStoredScheduledCycleDueAt(for: frequency)
             observeWakeForDeferredScheduledCycle()
@@ -620,6 +685,81 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
         #endif
         }
+    }
+
+    private func configureLoginCycleAfterScheduleSetup() {
+        guard isConfiguringInitialSchedule else {
+            markCurrentLoginSessionHandled()
+            return
+        }
+        runInitialLoginCycleIfNeeded()
+    }
+
+    private func runInitialLoginCycleIfNeeded() {
+        guard let currentLoginSessionIdentifier = loginSessionIdentifierProvider.currentLoginSessionIdentifier else {
+            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because the login session could not be identified.")
+            return
+        }
+        guard startAtLoginStatusProvider.isStartAtLoginEnabled else {
+            storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
+            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because Start at Login is not enabled.")
+            return
+        }
+        guard defaults.integer(forKey: Self.lastHandledLoginSessionIdentifierDefaultsKey) != currentLoginSessionIdentifier else {
+            debugLog("WallpaperCycleController: login wallpaper cycle already handled for this login session.")
+            return
+        }
+        guard appLaunchIsNearConsoleLogin() else {
+            storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
+            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because this app launch was not close to console login.")
+            return
+        }
+        guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
+            pendingInitialLoginSessionIdentifier = currentLoginSessionIdentifier
+            debugLog("WallpaperCycleController: waiting to run login wallpaper cycle until this app's user session is active.")
+            return
+        }
+        storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
+        debugLog("WallpaperCycleController: running login wallpaper cycle after app launch.")
+        tick(trigger: .login)
+    }
+
+    private func appLaunchIsNearConsoleLogin() -> Bool {
+        guard let appLaunchDate = loginLaunchTimingProvider.appLaunchDate,
+              let consoleLoginDate = loginLaunchTimingProvider.consoleLoginDate else {
+            debugLog("WallpaperCycleController: login launch timing is unavailable.")
+            return false
+        }
+        let intervalAfterLogin = appLaunchDate.timeIntervalSince(consoleLoginDate)
+        return intervalAfterLogin >= 0 && intervalAfterLogin <= Self.loginLaunchWindow
+    }
+
+    private func handleLoginScheduleSessionBecameActive() {
+        if let pendingInitialLoginSessionIdentifier {
+            guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
+                tick(trigger: .unlock)
+                return
+            }
+            self.pendingInitialLoginSessionIdentifier = nil
+            storeHandledLoginSessionIdentifier(pendingInitialLoginSessionIdentifier)
+            debugLog("WallpaperCycleController: running login wallpaper cycle after session activation.")
+            tick(trigger: .login)
+            return
+        }
+
+        tick(trigger: .unlock)
+    }
+
+    private func markCurrentLoginSessionHandled() {
+        guard let currentLoginSessionIdentifier = loginSessionIdentifierProvider.currentLoginSessionIdentifier else {
+            debugLog("WallpaperCycleController: could not remember the current login session for the login wallpaper schedule.")
+            return
+        }
+        storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
+    }
+
+    private func storeHandledLoginSessionIdentifier(_ identifier: Int) {
+        defaults.set(identifier, forKey: Self.lastHandledLoginSessionIdentifierDefaultsKey)
     }
 
     private func observeWakeForDeferredScheduledCycle() {
@@ -692,6 +832,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private enum WallpaperCycleTrigger {
         case manual
+        case login
         case unlock
         case wake
         case scheduled
@@ -707,6 +848,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         var logDescription: String {
             switch self {
             case .manual: return "manual trigger"
+            case .login: return "login trigger"
             case .unlock: return "unlock trigger"
             case .wake: return "wake trigger"
             case .scheduled: return "scheduled trigger"
