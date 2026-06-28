@@ -46,6 +46,30 @@ struct PhotosWallpaperTests {
         #expect(invalidationCount == 2)
     }
 
+    @Test func singleInstanceLockRejectsSecondAcquireUntilReleased() {
+        let lockURL = temporaryTestDirectory().appendingPathComponent("PhotosWallpaper.lock")
+        defer { try? FileManager.default.removeItem(at: lockURL.deletingLastPathComponent()) }
+
+        guard case .acquired(let firstLock) = SingleInstanceLock.acquire(lockURL: lockURL) else {
+            Issue.record("Expected the first lock acquire to succeed.")
+            return
+        }
+
+        guard case .alreadyLocked = SingleInstanceLock.acquire(lockURL: lockURL) else {
+            Issue.record("Expected the second lock acquire to be rejected.")
+            firstLock.release()
+            return
+        }
+
+        firstLock.release()
+
+        guard case .acquired(let reacquiredLock) = SingleInstanceLock.acquire(lockURL: lockURL) else {
+            Issue.record("Expected the lock to be acquirable after release.")
+            return
+        }
+        reacquiredLock.release()
+    }
+
     @Test func firstRunNotifierShowsMenuBarWelcomeWindowOnce() {
         let defaults = FakeDefaults()
         let presenter = FakeFirstRunWelcomePresenter()

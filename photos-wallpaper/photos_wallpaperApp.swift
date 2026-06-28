@@ -9,6 +9,7 @@ import SwiftUI
 import Photos
 import AppKit
 import Combine
+import Darwin
 
 @MainActor
 protocol AppModalWindowProviding {
@@ -95,6 +96,8 @@ final class FirstRunStartupController: ObservableObject {
 /// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
 ///   the UI.
 struct photos_wallpaperApp: App {
+    /// Retains the POSIX lock for the app lifetime.
+    private let singleInstanceLock: SingleInstanceLock?
     @StateObject private var firstRunStartupController: FirstRunStartupController
     @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var loginItemManager = LoginItemManager()
@@ -107,6 +110,8 @@ struct photos_wallpaperApp: App {
     private let currentWallpaperAlbumController: CurrentWallpaperAlbumController
 
     init() {
+        self.singleInstanceLock = Self.acquireSingleInstanceLock()
+
         let firstRunStartupController = FirstRunStartupController()
         let historyLogger = WallpaperHistoryLogger()
         _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
@@ -114,6 +119,21 @@ struct photos_wallpaperApp: App {
         self.currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
         firstRunStartupController.scheduleWelcomeIfNeeded()
+    }
+
+    private static func acquireSingleInstanceLock() -> SingleInstanceLock? {
+        switch SingleInstanceLock.acquire() {
+        case .acquired(let lock):
+            debugLog("photos_wallpaperApp: acquired single-instance lock at \(lock.lockURL.path).")
+            return lock
+        case .alreadyLocked:
+            debugLog("photos_wallpaperApp: another instance is already running; terminating this launch.")
+            ExistingAppInstanceActivator().activateExistingInstance()
+            Darwin.exit(EXIT_SUCCESS)
+        case .failed(let error):
+            debugLog("photos_wallpaperApp: could not acquire single-instance lock: \(error.localizedDescription).")
+            return nil
+        }
     }
 
     var body: some Scene {
