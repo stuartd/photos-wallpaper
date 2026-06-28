@@ -135,6 +135,7 @@ final class FirstRunNotifier {
     }
 
     func dismissWelcomeIfPresented() {
+        defaults.set(true, forKey: Self.didShowMenuBarWelcomeDefaultsKey)
         presenter.dismissMenuBarWelcome()
     }
 }

@@ -126,6 +126,7 @@ struct photos_wallpaperApp: App {
             .pickerStyle(.menu)
             .disabled(isAboutPanelOpen)
             .onAppear {
+                prepareForUserInitiatedSurface()
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
             .onChange(of: cycleController.isWaitingForPhotoAuthorization) { _, isWaiting in
@@ -137,21 +138,25 @@ struct photos_wallpaperApp: App {
                 .disabled(isAboutPanelOpen)
 
             Button("Change Wallpaper Now") {
+                prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
             }
             .disabled(isAboutPanelOpen)
 
             Button("Add Current Wallpaper(s) to Photos Wallpaper Album") {
+                prepareForUserInitiatedSurface()
                 currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }
             .disabled(isAboutPanelOpen)
 
             Menu("Logs") {
                 Button("Show Wallpaper History") {
+                    prepareForUserInitiatedSurface()
                     historyLogger.openHistoryLog()
                 }
 
                 Button("Show Runtime Log") {
+                    prepareForUserInitiatedSurface()
                     runtimeLogger.openRuntimeLog()
                 }
             }
@@ -160,7 +165,7 @@ struct photos_wallpaperApp: App {
             Divider()
 
             Button("About Photos Wallpaper") {
-                firstRunStartupController.dismissWelcomeIfPresented()
+                prepareForUserInitiatedSurface()
                 isAboutPanelOpen = true
                 defer { isAboutPanelOpen = false }
                 documentOpener.openAboutPanel()
@@ -170,11 +175,13 @@ struct photos_wallpaperApp: App {
             Divider()
 
             Button("Privacy Policy") {
+                prepareForUserInitiatedSurface()
                 documentOpener.openPrivacyDocument()
             }
             .disabled(isAboutPanelOpen)
 
             Button("Contact Support…") {
+                prepareForUserInitiatedSurface()
                 documentOpener.openSupportPage()
             }
             .disabled(isAboutPanelOpen)
@@ -191,6 +198,7 @@ struct photos_wallpaperApp: App {
         Binding(
             get: { cycleController.frequency },
             set: { newFrequency in
+                prepareForUserInitiatedSurface()
                 cycleController.frequency = newFrequency
                 promptToEnableStartAtLoginIfNeeded(for: newFrequency)
             }
@@ -200,8 +208,15 @@ struct photos_wallpaperApp: App {
     private var startAtLoginBinding: Binding<Bool> {
         Binding(
             get: { loginItemManager.isEnabled },
-            set: { loginItemManager.setEnabled($0) }
+            set: { isEnabled in
+                prepareForUserInitiatedSurface()
+                loginItemManager.setEnabled(isEnabled)
+            }
         )
+    }
+
+    private func prepareForUserInitiatedSurface() {
+        firstRunStartupController.dismissWelcomeIfPresented()
     }
 
     private func promptToEnableStartAtLoginIfNeeded(for frequency: CycleFrequency?) {
@@ -212,6 +227,7 @@ struct photos_wallpaperApp: App {
         }
         pendingStartAtLoginPromptFrequency = nil
         DispatchQueue.main.async {
+            prepareForUserInitiatedSurface()
             loginItemManager.promptToEnableStartAtLogin(forSchedule: frequency?.rawValue)
         }
     }
