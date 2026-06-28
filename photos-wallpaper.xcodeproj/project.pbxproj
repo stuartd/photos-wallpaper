@@ -139,7 +139,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2650;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					178CB4242FA11B0800933083 = {
 						CreatedOnToolsVersion = 26.4.1;
@@ -249,6 +249,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -314,6 +315,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -338,16 +340,15 @@
 		178CB4312FA11B0900933083 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				AUTOMATION_APPLE_EVENTS = NO;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -391,18 +392,17 @@
 		178CB4322FA11B0900933083 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_IDENTITY = "Developer ID Application: Stuart Dunkeld (ZQ5KWSZ72K)";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=*]" = "Developer ID Application: Stuart Dunkeld (ZQ5KWSZ72K)";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -446,12 +446,11 @@
 		1790BE042FA7F16500024FC1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "photos-wallpaper/Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
@@ -470,12 +469,11 @@
 		1790BE052FA7F16500024FC1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				APP_EXECUTABLE_NAME = "photos-wallpaper";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = ZQ5KWSZ72K;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "photos-wallpaper/Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
