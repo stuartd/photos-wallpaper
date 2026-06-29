@@ -300,9 +300,10 @@ struct PhotosWallpaperTests {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.fifteenMinutes.rawValue
         let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
 
         let controller = WallpaperCycleController(
-            photoManager: FakePhotoManager(),
+            photoManager: photoManager,
             defaults: defaults,
             historyLogger: FakeWallpaperHistoryLogger(),
             notifier: FakeWallpaperCycleNotifier(),
@@ -314,6 +315,7 @@ struct PhotosWallpaperTests {
         #expect(controller.frequency == .fifteenMinutes)
         let expectedIntervals: [TimeInterval] = [15 * 60]
         #expect(scheduler.scheduledIntervals == expectedIntervals)
+        #expect(photoManager.requestPhotoAccessCallCount == 0)
     }
 
     @Test func newUserStartsWithNoScheduleAndDoesNotRequestPhotoAccess() {
@@ -402,61 +404,6 @@ struct PhotosWallpaperTests {
         #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
-    }
-
-    @Test func migratesSavedFrequencyFromLegacyPreferencesWhenCurrentDefaultsAreEmpty() throws {
-        let defaults = FakeDefaults()
-        let scheduler = FakeTimerScheduler()
-        let legacyDefaultsURL = temporaryTestDirectory().appendingPathComponent("com.rosehillsolutions.photoswallpaper.plist")
-        defer { try? FileManager.default.removeItem(at: legacyDefaultsURL.deletingLastPathComponent()) }
-        try FileManager.default.createDirectory(at: legacyDefaultsURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        NSDictionary(dictionary: ["cycleFrequency": CycleFrequency.fiveMinutes.rawValue])
-            .write(to: legacyDefaultsURL, atomically: true)
-
-        let controller = WallpaperCycleController(
-            photoManager: FakePhotoManager(),
-            defaults: defaults,
-            historyLogger: FakeWallpaperHistoryLogger(),
-            notifier: FakeWallpaperCycleNotifier(),
-            screenProvider: FakeScreenProvider(screens: []),
-            wakeEventObserver: FakeWakeEventObserver(),
-            timerScheduler: scheduler,
-            legacyDefaultsURL: legacyDefaultsURL
-        )
-
-        #expect(controller.frequency == .fiveMinutes)
-        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.fiveMinutes.rawValue)
-        let expectedIntervals: [TimeInterval] = [5 * 60]
-        #expect(scheduler.scheduledIntervals == expectedIntervals)
-    }
-
-    @Test func currentSavedFrequencyWinsOverLegacyPreferences() throws {
-        let defaults = FakeDefaults()
-        defaults.storage["cycleFrequency"] = CycleFrequency.day.rawValue
-        let scheduler = FakeTimerScheduler()
-        let legacyDefaultsURL = temporaryTestDirectory().appendingPathComponent("com.rosehillsolutions.photoswallpaper.plist")
-        defer { try? FileManager.default.removeItem(at: legacyDefaultsURL.deletingLastPathComponent()) }
-        try FileManager.default.createDirectory(at: legacyDefaultsURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        NSDictionary(dictionary: ["cycleFrequency": CycleFrequency.fiveMinutes.rawValue])
-            .write(to: legacyDefaultsURL, atomically: true)
-
-        let controller = WallpaperCycleController(
-            photoManager: FakePhotoManager(),
-            defaults: defaults,
-            historyLogger: FakeWallpaperHistoryLogger(),
-            notifier: FakeWallpaperCycleNotifier(),
-            screenProvider: FakeScreenProvider(screens: []),
-            wakeEventObserver: FakeWakeEventObserver(),
-            timerScheduler: scheduler,
-            legacyDefaultsURL: legacyDefaultsURL
-        )
-
-        #expect(controller.frequency == .day)
-        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
-        let expectedIntervals: [TimeInterval] = [60 * 60 * 24]
-        #expect(scheduler.scheduledIntervals == expectedIntervals)
     }
 
     @Test func savedIntervalDefersOverdueScheduledCycleOnAppLaunch() async {

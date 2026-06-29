@@ -414,7 +414,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let defaultsKey = "cycleFrequency"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
-    private static let legacyDefaultsFilename = "com.rosehillsolutions.photoswallpaper.plist"
     private static let loginLaunchWindow: TimeInterval = 5 * 60
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
     private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
@@ -482,7 +481,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
                   startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
                   loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
-                  legacyDefaultsURL: Self.defaultLegacyDefaultsURL,
                   preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests,
                   startsScheduleAutomatically: !Self.isRunningUnitTests)
     }
@@ -495,8 +493,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                      screenProvider: ScreenProviding,
                      wakeEventObserver: WakeEventObserving,
                      activeUserSessionEventObserver: ActiveUserSessionEventObserving? = nil,
-                     timerScheduler: TimerScheduling,
-                     legacyDefaultsURL: URL? = nil) {
+                     timerScheduler: TimerScheduling) {
         self.init(photoManager: photoManager,
                   defaults: defaults,
                   historyLogger: historyLogger,
@@ -510,7 +507,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
                   startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
                   loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
-                  legacyDefaultsURL: legacyDefaultsURL,
                   preflightsPhotoAccessWhenScheduling: true)
     }
 
@@ -527,7 +523,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          loginSessionIdentifierProvider: LoginSessionIdentifying = SecurityLoginSessionIdentifierProvider(),
          startAtLoginStatusProvider: StartAtLoginStatusProviding = ServiceManagementStartAtLoginStatusProvider(),
          loginLaunchTimingProvider: LoginLaunchTimingProviding = AppKitLoginLaunchTimingProvider(),
-         legacyDefaultsURL: URL? = nil,
          preflightsPhotoAccessWhenScheduling: Bool = true,
          startsScheduleAutomatically: Bool = true) {
         self.photoManager = photoManager
@@ -545,7 +540,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.loginLaunchTimingProvider = loginLaunchTimingProvider
         self.preflightsPhotoAccessWhenScheduling = preflightsPhotoAccessWhenScheduling
         self.startsScheduleAutomatically = startsScheduleAutomatically
-        if let raw = Self.storedFrequencyRawValue(defaults: defaults, legacyDefaultsURL: legacyDefaultsURL),
+        if let raw = defaults.string(forKey: Self.defaultsKey),
            let f = CycleFrequency(rawValue: raw) {
             self.frequency = f
         } else {
@@ -564,40 +559,11 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         isConfiguringInitialSchedule = false
     }
 
-    private static var defaultLegacyDefaultsURL: URL? {
-        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("Preferences", isDirectory: true)
-            .appendingPathComponent(legacyDefaultsFilename)
-    }
-
     // Not ideal, but this will allow the permission tests to run without generating an actual request popup
     private static var isRunningUnitTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
         ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
         NSClassFromString("XCTestCase") != nil
-    }
-
-    private static func storedFrequencyRawValue(defaults: KeyValueStoring, legacyDefaultsURL: URL?) -> String? {
-        if let raw = defaults.string(forKey: defaultsKey) {
-            return raw
-        }
-
-        guard let legacyRaw = legacyFrequencyRawValue(from: legacyDefaultsURL),
-              CycleFrequency(rawValue: legacyRaw) != nil else {
-            return nil
-        }
-        defaults.set(legacyRaw, forKey: defaultsKey)
-        debugLog("WallpaperCycleController: migrated wallpaper schedule from legacy preferences.")
-        return legacyRaw
-    }
-
-    private static func legacyFrequencyRawValue(from url: URL?) -> String? {
-        guard let url,
-              let legacyDefaults = NSDictionary(contentsOf: url),
-              let raw = legacyDefaults[defaultsKey] as? String else {
-            return nil
-        }
-        return raw
     }
 
     /// Runs one wallpaper cycle immediately.
@@ -630,7 +596,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
         }
-        if preflightsPhotoAccessWhenScheduling {
+        if preflightsPhotoAccessWhenScheduling && !isConfiguringInitialSchedule {
             switch photoManager.requestPhotoAccessIfNeeded() {
             case .ready:
                 isWaitingForPhotoAuthorization = false
