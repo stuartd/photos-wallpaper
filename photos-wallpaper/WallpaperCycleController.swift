@@ -417,6 +417,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let loginLaunchWindow: TimeInterval = 5 * 60
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
     private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
+    private static let automaticLoginCycleDebounceInterval: TimeInterval = 10
 
     @Published var frequency: CycleFrequency? {
         didSet {
@@ -461,6 +462,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var wakeGraceEndsAt: Date?
     private var isConfiguringInitialSchedule = true
     private var pendingInitialLoginSessionIdentifier: Int?
+    private var lastAutomaticLoginCycleStartedAt: Date?
 
     /// Production initializer used by the app.
     convenience init() {
@@ -590,6 +592,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         activeUserSessionObservation?.invalidate()
         activeUserSessionObservation = nil
         pendingInitialLoginSessionIdentifier = nil
+        lastAutomaticLoginCycleStartedAt = nil
 
         guard let frequency else {
             clearStoredScheduledCycleDueAt()
@@ -811,6 +814,15 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             self != .manual
         }
 
+        var isAutomaticLoginScheduleTrigger: Bool {
+            switch self {
+            case .login, .unlock, .wake:
+                return true
+            case .manual, .scheduled:
+                return false
+            }
+        }
+
         var logDescription: String {
             switch self {
             case .manual: return "manual trigger"
@@ -849,9 +861,10 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
             return
         }
+        guard shouldRunAutomaticLoginCycle(trigger: trigger) else { return }
         clearDeferredScheduledCycleIfNeeded(trigger: trigger)
         isCycleInProgress = true
-        debugLog("WallpaperCycleController: starting wallpaper cycle.")
+        debugLog("WallpaperCycleController: starting wallpaper cycle for \(trigger.logDescription).")
         let screens = screenProvider.screens
         debugLog("WallpaperCycleController: found \(screens.count) screen(s).")
         guard !screens.isEmpty else {
@@ -1039,6 +1052,23 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             return false
         }
         debugLog("WallpaperCycleController: delaying overdue scheduled cycle until wake grace period ends.")
+        return true
+    }
+
+    private func shouldRunAutomaticLoginCycle(trigger: WallpaperCycleTrigger) -> Bool {
+        guard frequency == .onLogin,
+              trigger.isAutomaticLoginScheduleTrigger else {
+            return true
+        }
+
+        let now = Date()
+        if let lastAutomaticLoginCycleStartedAt,
+           now.timeIntervalSince(lastAutomaticLoginCycleStartedAt) < Self.automaticLoginCycleDebounceInterval {
+            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because another login/wake cycle ran recently.")
+            return false
+        }
+
+        lastAutomaticLoginCycleStartedAt = now
         return true
     }
 
