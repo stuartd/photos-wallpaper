@@ -106,6 +106,6 @@ struct ExistingAppInstanceActivator {
             .runningApplications(withBundleIdentifier: bundleIdentifier)
             .first { $0.processIdentifier != currentProcessIdentifier }
 
-        existingInstance?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        existingInstance?.activate(options: [.activateAllWindows])
     }
 }

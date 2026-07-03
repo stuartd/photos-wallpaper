@@ -494,6 +494,34 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   preflightsPhotoAccessWhenScheduling: true)
     }
 
+    convenience init(photoManager: PhotoManaging,
+                     defaults: KeyValueStoring,
+                     historyLogger: WallpaperHistoryLogging,
+                     notifier: WallpaperCycleNotifying,
+                     screenProvider: ScreenProviding,
+                     wakeEventObserver: WakeEventObserving,
+                     activeUserSessionEventObserver: ActiveUserSessionEventObserving? = nil,
+                     timerScheduler: TimerScheduling,
+                     screenSleepStateProvider: ScreenSleepStateProviding,
+                     activeUserSessionProvider: ActiveUserSessionProviding,
+                     preflightsPhotoAccessWhenScheduling: Bool = true,
+                     startsScheduleAutomatically: Bool = true) {
+        self.init(photoManager: photoManager,
+                  defaults: defaults,
+                  historyLogger: historyLogger,
+                  notifier: notifier,
+                  screenProvider: screenProvider,
+                  wakeEventObserver: wakeEventObserver,
+                  activeUserSessionEventObserver: activeUserSessionEventObserver,
+                  timerScheduler: timerScheduler,
+                  screenSleepStateProvider: screenSleepStateProvider,
+                  activeUserSessionProvider: activeUserSessionProvider,
+                  loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
+                  startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
+                  preflightsPhotoAccessWhenScheduling: preflightsPhotoAccessWhenScheduling,
+                  startsScheduleAutomatically: startsScheduleAutomatically)
+    }
+
     init(photoManager: PhotoManaging,
          defaults: KeyValueStoring,
          historyLogger: WallpaperHistoryLogging,
@@ -504,8 +532,8 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          timerScheduler: TimerScheduling,
          screenSleepStateProvider: ScreenSleepStateProviding,
          activeUserSessionProvider: ActiveUserSessionProviding,
-         loginSessionIdentifierProvider: LoginSessionIdentifying = SecurityLoginSessionIdentifierProvider(),
-         startAtLoginStatusProvider: StartAtLoginStatusProviding = ServiceManagementStartAtLoginStatusProvider(),
+         loginSessionIdentifierProvider: LoginSessionIdentifying,
+         startAtLoginStatusProvider: StartAtLoginStatusProviding,
          preflightsPhotoAccessWhenScheduling: Bool = true,
          startsScheduleAutomatically: Bool = true) {
         self.photoManager = photoManager
