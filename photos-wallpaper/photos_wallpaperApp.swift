@@ -137,7 +137,7 @@ struct photos_wallpaperApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("Wallpaper", systemImage: "photo") {
+        MenuBarExtra("Photos Wallpaper", systemImage: "photo") {
             Picker("Wallpaper Schedule", selection: frequencyBinding) {
                 ForEach(CycleFrequency.allCases) { freq in
                     Text(freq.displayName).tag(Optional(freq))
