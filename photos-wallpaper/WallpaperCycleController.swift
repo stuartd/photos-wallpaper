@@ -176,11 +176,6 @@ protocol StartAtLoginStatusProviding {
     var isStartAtLoginEnabled: Bool { get }
 }
 
-protocol LoginLaunchTimingProviding {
-    var appLaunchDate: Date? { get }
-    var consoleLoginDate: Date? { get }
-}
-
 final class NotificationWakeEventObservation: WakeEventObservation {
     private let center: NotificationCenter
     private var token: NSObjectProtocol?
@@ -313,71 +308,6 @@ struct ServiceManagementStartAtLoginStatusProvider: StartAtLoginStatusProviding 
     }
 }
 
-struct AppKitLoginLaunchTimingProvider: LoginLaunchTimingProviding {
-    var appLaunchDate: Date? {
-        NSRunningApplication.current.launchDate ?? Date()
-    }
-
-    var consoleLoginDate: Date? {
-        UtmpxConsoleLoginDateProvider.currentConsoleLoginDate() ??
-        ((try? FileManager.default.attributesOfItem(atPath: "/dev/console")[.modificationDate]) as? Date)
-    }
-}
-
-struct UtmpxConsoleLoginDateProvider {
-    struct Record {
-        let userName: String
-        let line: String
-        let type: Int16
-        let date: Date
-    }
-
-    static func currentConsoleLoginDate() -> Date? {
-        guard let userName = currentUserName else { return nil }
-
-        var records: [Record] = []
-        setutxent()
-        defer { endutxent() }
-
-        while let entryPointer = getutxent() {
-            let entry = entryPointer.pointee
-            records.append(Record(userName: nullTerminatedString(from: entry.ut_user),
-                                  line: nullTerminatedString(from: entry.ut_line),
-                                  type: entry.ut_type,
-                                  date: Date(timeIntervalSince1970: TimeInterval(entry.ut_tv.tv_sec) + TimeInterval(entry.ut_tv.tv_usec) / 1_000_000)))
-        }
-
-        return mostRecentConsoleLoginDate(in: records, userName: userName)
-    }
-
-    static func mostRecentConsoleLoginDate(in records: [Record], userName: String) -> Date? {
-        records
-            .filter { record in
-                record.userName == userName &&
-                record.line == "console" &&
-                record.type == Int16(USER_PROCESS)
-            }
-            .map(\.date)
-            .max()
-    }
-
-    private static var currentUserName: String? {
-        if let passwordEntry = getpwuid(getuid()),
-           let userName = passwordEntry.pointee.pw_name {
-            return String(cString: userName)
-        }
-
-        let fallbackUserName = NSUserName()
-        return fallbackUserName.isEmpty ? nil : fallbackUserName
-    }
-
-    private static func nullTerminatedString<T>(from value: T) -> String {
-        withUnsafeBytes(of: value) { rawBuffer in
-            String(decoding: rawBuffer.prefix { $0 != 0 }, as: UTF8.self)
-        }
-    }
-}
-
 protocol TimerScheduling {
     func scheduledTimer(interval: TimeInterval, repeats: Bool, block: @escaping () -> Void) -> CancellableTimer
 }
@@ -470,8 +400,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let defaultsKey = "cycleFrequency"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
-    private static let loginLaunchWindow: TimeInterval = 5 * 60
-    private static let loginLaunchFutureTolerance: TimeInterval = 60
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
     private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
     private static let automaticLoginCycleDebounceInterval: TimeInterval = 10
@@ -506,7 +434,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private let activeUserSessionProvider: ActiveUserSessionProviding
     private let loginSessionIdentifierProvider: LoginSessionIdentifying
     private let startAtLoginStatusProvider: StartAtLoginStatusProviding
-    private let loginLaunchTimingProvider: LoginLaunchTimingProviding
     private let preflightsPhotoAccessWhenScheduling: Bool
     private let startsScheduleAutomatically: Bool
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
@@ -539,7 +466,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   activeUserSessionProvider: SystemActiveUserSessionProvider(),
                   loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
                   startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
-                  loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
                   preflightsPhotoAccessWhenScheduling: !Self.isRunningUnitTests,
                   startsScheduleAutomatically: !Self.isRunningUnitTests)
     }
@@ -565,7 +491,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                   activeUserSessionProvider: AlwaysActiveUserSessionProvider(),
                   loginSessionIdentifierProvider: SecurityLoginSessionIdentifierProvider(),
                   startAtLoginStatusProvider: ServiceManagementStartAtLoginStatusProvider(),
-                  loginLaunchTimingProvider: AppKitLoginLaunchTimingProvider(),
                   preflightsPhotoAccessWhenScheduling: true)
     }
 
@@ -581,7 +506,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
          activeUserSessionProvider: ActiveUserSessionProviding,
          loginSessionIdentifierProvider: LoginSessionIdentifying = SecurityLoginSessionIdentifierProvider(),
          startAtLoginStatusProvider: StartAtLoginStatusProviding = ServiceManagementStartAtLoginStatusProvider(),
-         loginLaunchTimingProvider: LoginLaunchTimingProviding = AppKitLoginLaunchTimingProvider(),
          preflightsPhotoAccessWhenScheduling: Bool = true,
          startsScheduleAutomatically: Bool = true) {
         self.photoManager = photoManager
@@ -596,7 +520,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         self.activeUserSessionProvider = activeUserSessionProvider
         self.loginSessionIdentifierProvider = loginSessionIdentifierProvider
         self.startAtLoginStatusProvider = startAtLoginStatusProvider
-        self.loginLaunchTimingProvider = loginLaunchTimingProvider
         self.preflightsPhotoAccessWhenScheduling = preflightsPhotoAccessWhenScheduling
         self.startsScheduleAutomatically = startsScheduleAutomatically
         if let raw = defaults.string(forKey: Self.defaultsKey),
@@ -735,10 +658,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             debugLog("WallpaperCycleController: login wallpaper cycle already handled for this login session.")
             return
         }
-        guard appLaunchIsNearConsoleLogin() else {
-            storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
-            return
-        }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
             pendingInitialLoginSessionIdentifier = currentLoginSessionIdentifier
             debugLog("WallpaperCycleController: waiting to run login wallpaper cycle until this app's user session is active.")
@@ -747,33 +666,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
         debugLog("WallpaperCycleController: running login wallpaper cycle after app launch.")
         tick(trigger: .login)
-    }
-
-    private func appLaunchIsNearConsoleLogin() -> Bool {
-        guard let appLaunchDate = loginLaunchTimingProvider.appLaunchDate,
-              let consoleLoginDate = loginLaunchTimingProvider.consoleLoginDate else {
-            debugLog("WallpaperCycleController: login launch timing is unavailable.")
-            return false
-        }
-        let intervalAfterLogin = appLaunchDate.timeIntervalSince(consoleLoginDate)
-        let isNearLogin = intervalAfterLogin >= -Self.loginLaunchFutureTolerance &&
-            intervalAfterLogin <= Self.loginLaunchWindow
-        if !isNearLogin {
-            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because app launch was \(Self.loginIntervalText(intervalAfterLogin)) console login (app launch: \(appLaunchDate), console login: \(consoleLoginDate); allowed range is \(Self.secondsText(Self.loginLaunchFutureTolerance)) before through \(Self.secondsText(Self.loginLaunchWindow)) after).")
-        }
-        return isNearLogin
-    }
-
-    private static func loginIntervalText(_ interval: TimeInterval) -> String {
-        if interval < 0 {
-            return "\(secondsText(interval)) before"
-        }
-        return "\(secondsText(interval)) after"
-    }
-
-    private static func secondsText(_ interval: TimeInterval) -> String {
-        let seconds = Int(abs(interval).rounded())
-        return "\(seconds) \(seconds == 1 ? "second" : "seconds")"
     }
 
     private func handleLoginScheduleSessionBecameActive() {

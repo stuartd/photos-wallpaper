@@ -32,7 +32,7 @@ The app stores a few settings locally on your Mac:
 
 ## Login and Wake Scheduling
 
-To run schedules such as "When I log in" at the right time, Photos Wallpaper reads local macOS session state, including whether this user owns the active console session and the current user's console login timestamp. It uses that information only to decide whether a wallpaper cycle should run.
+To run schedules such as "When I log in" at the right time, Photos Wallpaper reads local macOS session state, including whether this user owns the active console session and the current user's graphical login session identifier. It uses that information only to decide whether a wallpaper cycle should run.
 
 ## Wallpaper History
 
