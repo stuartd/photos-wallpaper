@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
+import Darwin
 import Photos
 import Security
 import ServiceManagement
@@ -318,7 +319,62 @@ struct AppKitLoginLaunchTimingProvider: LoginLaunchTimingProviding {
     }
 
     var consoleLoginDate: Date? {
-        (try? FileManager.default.attributesOfItem(atPath: "/dev/console")[.modificationDate]) as? Date
+        UtmpxConsoleLoginDateProvider.currentConsoleLoginDate() ??
+        ((try? FileManager.default.attributesOfItem(atPath: "/dev/console")[.modificationDate]) as? Date)
+    }
+}
+
+struct UtmpxConsoleLoginDateProvider {
+    struct Record {
+        let userName: String
+        let line: String
+        let type: Int16
+        let date: Date
+    }
+
+    static func currentConsoleLoginDate() -> Date? {
+        guard let userName = currentUserName else { return nil }
+
+        var records: [Record] = []
+        setutxent()
+        defer { endutxent() }
+
+        while let entryPointer = getutxent() {
+            let entry = entryPointer.pointee
+            records.append(Record(userName: nullTerminatedString(from: entry.ut_user),
+                                  line: nullTerminatedString(from: entry.ut_line),
+                                  type: entry.ut_type,
+                                  date: Date(timeIntervalSince1970: TimeInterval(entry.ut_tv.tv_sec) + TimeInterval(entry.ut_tv.tv_usec) / 1_000_000)))
+        }
+
+        return mostRecentConsoleLoginDate(in: records, userName: userName)
+    }
+
+    static func mostRecentConsoleLoginDate(in records: [Record], userName: String) -> Date? {
+        records
+            .filter { record in
+                record.userName == userName &&
+                record.line == "console" &&
+                record.type == Int16(USER_PROCESS)
+            }
+            .map(\.date)
+            .max()
+    }
+
+    private static var currentUserName: String? {
+        if let passwordEntry = getpwuid(getuid()),
+           let userName = passwordEntry.pointee.pw_name {
+            return String(cString: userName)
+        }
+
+        let fallbackUserName = NSUserName()
+        return fallbackUserName.isEmpty ? nil : fallbackUserName
+    }
+
+    private static func nullTerminatedString<T>(from value: T) -> String {
+        withUnsafeBytes(of: value) { rawBuffer in
+            String(decoding: rawBuffer.prefix { $0 != 0 }, as: UTF8.self)
+        }
     }
 }
 
@@ -415,6 +471,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
     private static let loginLaunchWindow: TimeInterval = 5 * 60
+    private static let loginLaunchFutureTolerance: TimeInterval = 60
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
     private static let wakeCatchUpReadinessRetryDelay: TimeInterval = 10
     private static let automaticLoginCycleDebounceInterval: TimeInterval = 10
@@ -680,7 +737,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         }
         guard appLaunchIsNearConsoleLogin() else {
             storeHandledLoginSessionIdentifier(currentLoginSessionIdentifier)
-            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because this app launch was not close to console login.")
             return
         }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
@@ -700,7 +756,24 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             return false
         }
         let intervalAfterLogin = appLaunchDate.timeIntervalSince(consoleLoginDate)
-        return intervalAfterLogin >= 0 && intervalAfterLogin <= Self.loginLaunchWindow
+        let isNearLogin = intervalAfterLogin >= -Self.loginLaunchFutureTolerance &&
+            intervalAfterLogin <= Self.loginLaunchWindow
+        if !isNearLogin {
+            debugLog("WallpaperCycleController: not running login wallpaper cycle after app launch because app launch was \(Self.loginIntervalText(intervalAfterLogin)) console login (app launch: \(appLaunchDate), console login: \(consoleLoginDate); allowed range is \(Self.secondsText(Self.loginLaunchFutureTolerance)) before through \(Self.secondsText(Self.loginLaunchWindow)) after).")
+        }
+        return isNearLogin
+    }
+
+    private static func loginIntervalText(_ interval: TimeInterval) -> String {
+        if interval < 0 {
+            return "\(secondsText(interval)) before"
+        }
+        return "\(secondsText(interval)) after"
+    }
+
+    private static func secondsText(_ interval: TimeInterval) -> String {
+        let seconds = Int(abs(interval).rounded())
+        return "\(seconds) \(seconds == 1 ? "second" : "seconds")"
     }
 
     private func handleLoginScheduleSessionBecameActive() {

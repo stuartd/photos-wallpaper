@@ -30,6 +30,10 @@ The app stores a few settings locally on your Mac:
 - local wallpaper history
 - local runtime diagnostics
 
+## Login and Wake Scheduling
+
+To run schedules such as "When I log in" at the right time, Photos Wallpaper reads local macOS session state, including whether this user owns the active console session and the current user's console login timestamp. It uses that information only to decide whether a wallpaper cycle should run.
+
 ## Wallpaper History
 
 When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Logs menu.

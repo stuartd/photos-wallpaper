@@ -7,6 +7,7 @@
 
 import Foundation
 import AppKit
+import Darwin
 import Photos
 import ServiceManagement
 import Testing
@@ -44,6 +45,36 @@ struct PhotosWallpaperTests {
         observation.invalidate()
 
         #expect(invalidationCount == 2)
+    }
+
+    @Test func consoleLoginDateProviderChoosesMostRecentCurrentUserConsoleLoginRecord() {
+        let earlierConsoleLogin = Date(timeIntervalSince1970: 100)
+        let laterConsoleLogin = Date(timeIntervalSince1970: 200)
+        let newestIrrelevantRecord = Date(timeIntervalSince1970: 300)
+        let records = [
+            UtmpxConsoleLoginDateProvider.Record(userName: "stuart",
+                                                 line: "ttys000",
+                                                 type: Int16(USER_PROCESS),
+                                                 date: newestIrrelevantRecord),
+            UtmpxConsoleLoginDateProvider.Record(userName: "becky",
+                                                 line: "console",
+                                                 type: Int16(USER_PROCESS),
+                                                 date: newestIrrelevantRecord),
+            UtmpxConsoleLoginDateProvider.Record(userName: "stuart",
+                                                 line: "console",
+                                                 type: Int16(DEAD_PROCESS),
+                                                 date: newestIrrelevantRecord),
+            UtmpxConsoleLoginDateProvider.Record(userName: "stuart",
+                                                 line: "console",
+                                                 type: Int16(USER_PROCESS),
+                                                 date: earlierConsoleLogin),
+            UtmpxConsoleLoginDateProvider.Record(userName: "stuart",
+                                                 line: "console",
+                                                 type: Int16(USER_PROCESS),
+                                                 date: laterConsoleLogin)
+        ]
+
+        #expect(UtmpxConsoleLoginDateProvider.mostRecentConsoleLoginDate(in: records, userName: "stuart") == laterConsoleLogin)
     }
 
     @Test func singleInstanceLockRejectsSecondAcquireUntilReleased() {
@@ -760,6 +791,41 @@ struct PhotosWallpaperTests {
             startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
             loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 102),
                                                                      consoleLoginDate: Date(timeIntervalSince1970: 100))
+        )
+        await Task.yield()
+
+        #expect(controller.frequency == .onLogin)
+        #expect(defaults.integer(forKey: "lastHandledLoginSessionIdentifier") == 42)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.wallpaperAssignments.count == 1)
+    }
+
+    @Test func savedOnLoginRunsWallpaperCycleWhenConsoleLoginMarkerSettlesAfterAppLaunch() async {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.onLogin.rawValue
+        defaults.storage["lastHandledLoginSessionIdentifier"] = 41
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler,
+            screenSleepStateProvider: FakeScreenSleepStateProvider(),
+            activeUserSessionProvider: FakeActiveUserSessionProvider(appOwnsActiveConsoleSession: true),
+            loginSessionIdentifierProvider: FakeLoginSessionIdentifierProvider(identifier: 42),
+            startAtLoginStatusProvider: FakeStartAtLoginStatusProvider(isStartAtLoginEnabled: true),
+            loginLaunchTimingProvider: FakeLoginLaunchTimingProvider(appLaunchDate: Date(timeIntervalSince1970: 100),
+                                                                     consoleLoginDate: Date(timeIntervalSince1970: 102))
         )
         await Task.yield()
 
