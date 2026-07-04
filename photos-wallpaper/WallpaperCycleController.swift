@@ -446,6 +446,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var wakeGraceEndsAt: Date?
     private var isConfiguringInitialSchedule = true
     private var pendingInitialLoginSessionIdentifier: Int?
+    private var isAwaitingActiveSessionAfterLoginScheduleWake = false
     private var lastAutomaticLoginCycleStartedAt: Date?
 
     /// Production initializer used by the app.
@@ -600,6 +601,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         activeUserSessionObservation?.invalidate()
         activeUserSessionObservation = nil
         pendingInitialLoginSessionIdentifier = nil
+        isAwaitingActiveSessionAfterLoginScheduleWake = false
         lastAutomaticLoginCycleStartedAt = nil
 
         guard let frequency else {
@@ -634,7 +636,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
             wakeObservation = wakeEventObserver.observeWake { [weak self] in
                 Task { @MainActor [weak self] in
-                    self?.tick(trigger: .wake)
+                    self?.handleLoginScheduleWake()
                 }
             }
             configureLoginCycleAfterScheduleSetup()
@@ -703,13 +705,29 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
                 return
             }
             self.pendingInitialLoginSessionIdentifier = nil
+            isAwaitingActiveSessionAfterLoginScheduleWake = false
             storeHandledLoginSessionIdentifier(pendingInitialLoginSessionIdentifier)
             debugLog("WallpaperCycleController: running login wallpaper cycle after session activation.")
             tick(trigger: .login)
             return
         }
 
+        if isAwaitingActiveSessionAfterLoginScheduleWake {
+            guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
+                tick(trigger: .unlock)
+                return
+            }
+            isAwaitingActiveSessionAfterLoginScheduleWake = false
+            debugLog("WallpaperCycleController: running wake wallpaper cycle after session activation.")
+        }
+
         tick(trigger: .unlock)
+    }
+
+    private func handleLoginScheduleWake() {
+        guard !isAwaitingActiveSessionAfterLoginScheduleWake else { return }
+        isAwaitingActiveSessionAfterLoginScheduleWake = true
+        debugLog("WallpaperCycleController: waiting to run wake wallpaper cycle until this app's user session is active.")
     }
 
     private func markCurrentLoginSessionHandled() {
@@ -796,7 +814,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         case manual
         case login
         case unlock
-        case wake
         case scheduled
 
         var shouldAlwaysNotifyUnavailablePhotos: Bool {
@@ -809,7 +826,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
         var isAutomaticLoginScheduleTrigger: Bool {
             switch self {
-            case .login, .unlock, .wake:
+            case .login, .unlock:
                 return true
             case .manual, .scheduled:
                 return false
@@ -821,7 +838,6 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             case .manual: return "manual trigger"
             case .login: return "login trigger"
             case .unlock: return "unlock trigger"
-            case .wake: return "wake trigger"
             case .scheduled: return "scheduled trigger"
             }
         }
@@ -1057,7 +1073,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         let now = Date()
         if let lastAutomaticLoginCycleStartedAt,
            now.timeIntervalSince(lastAutomaticLoginCycleStartedAt) < Self.automaticLoginCycleDebounceInterval {
-            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because another login/wake cycle ran recently.")
+            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because another automatic login cycle ran recently.")
             return false
         }
 
