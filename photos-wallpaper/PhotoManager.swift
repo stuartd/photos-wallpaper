@@ -53,7 +53,7 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
 protocol PhotoManaging: AnyObject {
     var photoAuthorizationDidChange: (() -> Void)? { get set }
 
-    func getRandomPhotos(count: Int) -> PhotoSelectionResult
+    func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
@@ -91,7 +91,7 @@ final class PhotoManager: PhotoManaging {
     ///
     /// If there are fewer assets than screens, the last selected asset is reused so every display
     /// still receives a wallpaper for this cycle.
-    func getRandomPhotos(count: Int) -> PhotoSelectionResult {
+    func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult {
         switch refreshPhotos() {
         case .ready:
             break
@@ -112,13 +112,36 @@ final class PhotoManager: PhotoManaging {
         }
         debugLog("PhotoManager: selecting photos for \(count) screen(s) from \(photosCount) library asset(s).")
         let selectionCount = min(count, photosCount)
-        let selectedIndexes = Array(0..<photosCount).shuffled().prefix(selectionCount)
+        let selectedIndexes = selectedPhotoIndexes(photoCount: photosCount,
+                                                   selectionCount: selectionCount,
+                                                   selectionMode: selectionMode,
+                                                   allPhotos: allPhotos)
         var selectedPhotos = selectedIndexes.map { allPhotos.object(at: $0) }
         if let fallbackPhoto = selectedPhotos.last, selectedPhotos.count < count {
             selectedPhotos.append(contentsOf: Array(repeating: fallbackPhoto, count: count - selectedPhotos.count))
         }
         debugLog("PhotoManager: returning \(selectedPhotos.count) photo asset(s).")
         return .photos(selectedPhotos)
+    }
+
+    private func selectedPhotoIndexes(photoCount: Int,
+                                      selectionCount: Int,
+                                      selectionMode: WallpaperPhotoSelectionMode,
+                                      allPhotos: PHFetchResult<PHAsset>) -> [Int] {
+        switch selectionMode {
+        case .useAllPhotos:
+            return WallpaperPhotoSelector.randomIndexes(photoCount: photoCount,
+                                                        count: selectionCount)
+        case .preferWidePhotos:
+            return WallpaperPhotoSelector.preferWideIndexes(photoCount: photoCount,
+                                                            count: selectionCount) { index in
+                Self.isWideWallpaperCandidate(allPhotos.object(at: index))
+            }
+        }
+    }
+
+    private static func isWideWallpaperCandidate(_ asset: PHAsset) -> Bool {
+        asset.pixelWidth > asset.pixelHeight
     }
 
     /// Returns a human-friendly label that is still unique enough to disambiguate duplicates.

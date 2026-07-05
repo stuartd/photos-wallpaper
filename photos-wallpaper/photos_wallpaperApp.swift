@@ -154,6 +154,14 @@ struct photos_wallpaperApp: App {
                 promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
             }
 
+            Picker("Wallpaper Photos", selection: wallpaperPhotoSelectionModeBinding) {
+                ForEach(WallpaperPhotoSelectionMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(isAboutPanelOpen)
+
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isAboutPanelOpen)
 
@@ -221,6 +229,16 @@ struct photos_wallpaperApp: App {
                 prepareForUserInitiatedSurface()
                 cycleController.frequency = newFrequency
                 promptToEnableStartAtLoginIfNeeded(for: newFrequency)
+            }
+        )
+    }
+
+    private var wallpaperPhotoSelectionModeBinding: Binding<WallpaperPhotoSelectionMode> {
+        Binding(
+            get: { cycleController.wallpaperPhotoSelectionMode },
+            set: { newMode in
+                prepareForUserInitiatedSurface()
+                cycleController.wallpaperPhotoSelectionMode = newMode
             }
         )
     }

@@ -31,6 +31,7 @@ KNOWN_DEFAULTS_KEYS=(
     "lastHandledLoginSessionIdentifier"
     "nextScheduledCycleDueAt"
     "startAtLoginPromptDeclineCount"
+    "wallpaperPhotoSelectionMode"
 )
 
 git_commit() {

@@ -33,6 +33,58 @@ struct PhotosWallpaperTests {
         }
     }
 
+    @Test func wallpaperPhotoSelectionModeLabelsMatchMenuCopy() {
+        #expect(WallpaperPhotoSelectionMode.useAllPhotos.displayName == "Use All Photos")
+        #expect(WallpaperPhotoSelectionMode.preferWidePhotos.displayName == "Prefer Wide Photos")
+    }
+
+    @Test func wallpaperPhotoSelectorPrefersWideIndexesBeforeFallback() {
+        let wideStatuses = [false, true, false, true]
+        var nextRandomIndex = 0
+
+        let selectedIndexes = WallpaperPhotoSelector.preferWideIndexes(photoCount: wideStatuses.count,
+                                                                       count: 3,
+                                                                       randomIndexInRange: { range in
+            defer { nextRandomIndex += 1 }
+            return range.lowerBound + (nextRandomIndex % (range.upperBound - range.lowerBound))
+        }) { index in
+            wideStatuses[index]
+        }
+
+        #expect(selectedIndexes == [1, 3, 0])
+    }
+
+    @Test func wallpaperPhotoSelectorSelectsRandomIndexesForAllPhotos() {
+        var nextRandomIndex = 0
+
+        let selectedIndexes = WallpaperPhotoSelector.randomIndexes(photoCount: 3,
+                                                                   count: 2,
+                                                                   randomIndexInRange: { range in
+            defer { nextRandomIndex += 1 }
+            return range.lowerBound + (nextRandomIndex % (range.upperBound - range.lowerBound))
+        })
+
+        #expect(selectedIndexes == [0, 1])
+    }
+
+    @Test func wallpaperPhotoSelectorBoundsWideProbingBeforeFallback() {
+        var nextRandomIndex = 0
+        var inspectedIndexes: [Int] = []
+
+        let selectedIndexes = WallpaperPhotoSelector.preferWideIndexes(photoCount: 10_000,
+                                                                       count: 1,
+                                                                       randomIndexInRange: { range in
+            defer { nextRandomIndex += 1 }
+            return range.lowerBound + (nextRandomIndex % (range.upperBound - range.lowerBound))
+        }) { index in
+            inspectedIndexes.append(index)
+            return false
+        }
+
+        #expect(inspectedIndexes.count == 100)
+        #expect(selectedIndexes == [100])
+    }
+
     @Test func activeUserSessionEventObservationInvalidatesEveryRegisteredNotification() {
         var invalidationCount = 0
         let observation = NotificationActiveUserSessionEventObservation(invalidations: [
@@ -292,8 +344,10 @@ struct PhotosWallpaperTests {
         )
 
         #expect(controller.frequency == nil)
+        #expect(controller.wallpaperPhotoSelectionMode == .preferWidePhotos)
         #expect(scheduler.scheduledIntervals.isEmpty)
         #expect(defaults.storage["cycleFrequency"] == nil)
+        #expect(defaults.storage["wallpaperPhotoSelectionMode"] == nil)
     }
 
     @Test func loadsSavedFrequencyAndSchedulesTimer() {
@@ -316,6 +370,42 @@ struct PhotosWallpaperTests {
         let expectedIntervals: [TimeInterval] = [15 * 60]
         #expect(scheduler.scheduledIntervals == expectedIntervals)
         #expect(photoManager.requestPhotoAccessCallCount == 0)
+    }
+
+    @Test func loadsSavedWallpaperPhotoSelectionMode() {
+        let defaults = FakeDefaults()
+        defaults.storage["wallpaperPhotoSelectionMode"] = WallpaperPhotoSelectionMode.useAllPhotos.rawValue
+        let scheduler = FakeTimerScheduler()
+
+        let controller = WallpaperCycleController(
+            photoManager: FakePhotoManager(),
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        #expect(controller.wallpaperPhotoSelectionMode == .useAllPhotos)
+    }
+
+    @Test func changingWallpaperPhotoSelectionModePersistsValue() {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let controller = WallpaperCycleController(
+            photoManager: FakePhotoManager(),
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.wallpaperPhotoSelectionMode = .useAllPhotos
+
+        #expect(defaults.string(forKey: "wallpaperPhotoSelectionMode") == WallpaperPhotoSelectionMode.useAllPhotos.rawValue)
     }
 
     @Test func newUserStartsWithNoScheduleAndDoesNotRequestPhotoAccess() {
@@ -881,6 +971,65 @@ struct PhotosWallpaperTests {
         #expect(photoManager.requestedSizes == screens.map { $0.testPixelSize })
         #expect(photoManager.wallpaperAssignments.count == 3)
         #expect(photoManager.wallpaperAssignments.map(\.screen) == screens)
+    }
+
+    @Test func triggerNowPrefersWidePhotosByDefault() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let verticalAsset = makeFakeAsset()
+        let wideAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [verticalAsset, wideAsset],
+                                            assetWideStatuses: [false, true])
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.requestedPhotoSelectionModes == [.preferWidePhotos])
+        #expect(photoManager.requestedAssets.map(ObjectIdentifier.init) == [ObjectIdentifier(wideAsset)])
+    }
+
+    @Test func triggerNowCanUseAllPhotosWhenSelected() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let verticalAsset = makeFakeAsset()
+        let wideAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [verticalAsset, wideAsset],
+                                            assetWideStatuses: [false, true])
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+        controller.wallpaperPhotoSelectionMode = .useAllPhotos
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.requestedPhotoSelectionModes == [.useAllPhotos])
+        #expect(photoManager.requestedAssets.map(ObjectIdentifier.init) == [ObjectIdentifier(verticalAsset)])
     }
 
     @Test func triggerNowReusesLastPhotoWhenThereAreFewerPhotosThanScreens() async {
@@ -2022,6 +2171,7 @@ struct PhotosWallpaperTests {
 private final class FakePhotoManager: PhotoManaging {
     private let assetsToReturn: [PHAsset]
     private let assetNames: [ObjectIdentifier: String]
+    private let assetWideStatuses: [ObjectIdentifier: Bool]
     private let completesImageRequestsImmediately: Bool
     var photoSelectionOverride: PhotoSelectionResult?
     var photoAccessPreflightResult: PhotoAccessPreflightResult = .ready
@@ -2030,6 +2180,7 @@ private final class FakePhotoManager: PhotoManaging {
     private(set) var getRandomPhotosCallCount = 0
     private(set) var requestPhotoAccessCallCount = 0
     private(set) var requestedPhotoCount = 0
+    private(set) var requestedPhotoSelectionModes: [WallpaperPhotoSelectionMode] = []
     private(set) var requestedAssets: [PHAsset] = []
     private(set) var requestedSizes: [CGSize] = []
     private(set) var wallpaperAssignments: [(image: NSImage, screen: NSScreen)] = []
@@ -2043,6 +2194,7 @@ private final class FakePhotoManager: PhotoManaging {
 
     init(assetsToReturn: [PHAsset]? = nil,
          assetNames: [String]? = nil,
+         assetWideStatuses: [Bool]? = nil,
          completesImageRequestsImmediately: Bool = true,
          photoSelectionOverride: PhotoSelectionResult? = nil) {
         let assets = assetsToReturn ?? (0..<8).map { _ in makeFakeAsset() }
@@ -2054,18 +2206,36 @@ private final class FakePhotoManager: PhotoManaging {
         } else {
             self.assetNames = [:]
         }
+        if let assetWideStatuses {
+            self.assetWideStatuses = Dictionary(uniqueKeysWithValues: zip(assets.map(ObjectIdentifier.init), assetWideStatuses))
+        } else {
+            self.assetWideStatuses = [:]
+        }
     }
 
-    func getRandomPhotos(count: Int) -> PhotoSelectionResult {
+    func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult {
         getRandomPhotosCallCount += 1
         requestedPhotoCount = count
+        requestedPhotoSelectionModes.append(selectionMode)
         if let photoSelectionOverride { return photoSelectionOverride }
         guard !assetsToReturn.isEmpty else { return .unavailable }
-        if assetsToReturn.count >= count {
-            return .photos(Array(assetsToReturn.prefix(count)))
+        let selectionCount = min(count, assetsToReturn.count)
+        let selectedIndexes: [Int]
+        switch selectionMode {
+        case .useAllPhotos:
+            selectedIndexes = Array(0..<selectionCount)
+        case .preferWidePhotos:
+            let allIndexes = Array(assetsToReturn.indices)
+            let preferredIndexes = allIndexes.filter { index in
+                assetWideStatuses[ObjectIdentifier(assetsToReturn[index]), default: true]
+            }
+            let fallbackIndexes = allIndexes.filter { index in
+                !assetWideStatuses[ObjectIdentifier(assetsToReturn[index]), default: true]
+            }
+            selectedIndexes = Array((preferredIndexes + fallbackIndexes).prefix(selectionCount))
         }
+        var assets = selectedIndexes.map { assetsToReturn[$0] }
 
-        var assets = assetsToReturn
         if let fallbackAsset = assets.last {
             assets.append(contentsOf: Array(repeating: fallbackAsset, count: count - assets.count))
         }

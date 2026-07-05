@@ -11,6 +11,7 @@ import UserNotifications
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
     var frequency: CycleFrequency? { get set }
+    var wallpaperPhotoSelectionMode: WallpaperPhotoSelectionMode { get set }
     func triggerNow()
 }
 
@@ -379,6 +380,123 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     }
 }
 
+enum WallpaperPhotoSelectionMode: String, CaseIterable, Identifiable {
+    case useAllPhotos
+    case preferWidePhotos
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .useAllPhotos:
+            return "Use All Photos"
+        case .preferWidePhotos:
+            return "Prefer Wide Photos"
+        }
+    }
+}
+
+enum WallpaperPhotoSelector {
+    private static let minimumPreferWideProbeCount = 100
+    private static let preferWideProbeMultiplier = 50
+
+    static func randomIndexes(photoCount: Int,
+                              count: Int,
+                              randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) }) -> [Int] {
+        guard photoCount > 0, count > 0 else { return [] }
+        return randomUniqueIndexes(photoCount: photoCount,
+                                   count: min(count, photoCount),
+                                   excluding: [],
+                                   randomIndexInRange: randomIndexInRange)
+    }
+
+    static func preferWideIndexes(photoCount: Int,
+                                  count: Int,
+                                  randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
+                                  isWide: (Int) -> Bool) -> [Int] {
+        guard photoCount > 0, count > 0 else { return [] }
+        let selectionCount = min(count, photoCount)
+        let probeLimit = min(photoCount, max(Self.minimumPreferWideProbeCount,
+                                             selectionCount * Self.preferWideProbeMultiplier))
+        let selectedWideIndexes = randomWideIndexes(photoCount: photoCount,
+                                                    count: selectionCount,
+                                                    probeLimit: probeLimit,
+                                                    randomIndexInRange: randomIndexInRange,
+                                                    isWide: isWide)
+        guard selectedWideIndexes.count < selectionCount else { return selectedWideIndexes }
+
+        let fallbackIndexes = randomUniqueIndexes(photoCount: photoCount,
+                                                  count: selectionCount - selectedWideIndexes.count,
+                                                  excluding: Set(selectedWideIndexes),
+                                                  randomIndexInRange: randomIndexInRange)
+        return selectedWideIndexes + fallbackIndexes
+    }
+
+    private static func randomWideIndexes(photoCount: Int,
+                                          count: Int,
+                                          probeLimit: Int,
+                                          randomIndexInRange: (Range<Int>) -> Int,
+                                          isWide: (Int) -> Bool) -> [Int] {
+        var probedIndexes = Set<Int>()
+        var selectedIndexes: [Int] = []
+        let attemptLimit = max(probeLimit * 10, 20)
+        var attempts = 0
+
+        while probedIndexes.count < probeLimit,
+              selectedIndexes.count < count,
+              attempts < attemptLimit {
+            attempts += 1
+            let index = randomIndexInRange(0..<photoCount)
+            guard index >= 0,
+                  index < photoCount,
+                  probedIndexes.insert(index).inserted else {
+                continue
+            }
+            if isWide(index) {
+                selectedIndexes.append(index)
+            }
+        }
+
+        return selectedIndexes
+    }
+
+    private static func randomUniqueIndexes(photoCount: Int,
+                                            count: Int,
+                                            excluding excludedIndexes: Set<Int>,
+                                            randomIndexInRange: (Range<Int>) -> Int) -> [Int] {
+        let selectionCount = min(count, max(0, photoCount - excludedIndexes.count))
+        guard selectionCount > 0 else { return [] }
+
+        var usedIndexes = excludedIndexes
+        var selectedIndexes: [Int] = []
+        let attemptLimit = max(selectionCount * 10, 20)
+        var attempts = 0
+
+        while selectedIndexes.count < selectionCount,
+              attempts < attemptLimit {
+            attempts += 1
+            let index = randomIndexInRange(0..<photoCount)
+            guard index >= 0,
+                  index < photoCount,
+                  usedIndexes.insert(index).inserted else {
+                continue
+            }
+            selectedIndexes.append(index)
+        }
+
+        if selectedIndexes.count < selectionCount {
+            for index in 0..<photoCount where usedIndexes.insert(index).inserted {
+                selectedIndexes.append(index)
+                if selectedIndexes.count == selectionCount {
+                    break
+                }
+            }
+        }
+
+        return selectedIndexes
+    }
+}
+
 /// Coordinates the wallpaper cycle.
 ///
 /// Responsibilities:
@@ -398,6 +516,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 ///   dependencies.
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
+    private static let wallpaperPhotoSelectionModeDefaultsKey = "wallpaperPhotoSelectionMode"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
@@ -414,6 +533,12 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             }
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
             scheduleCycleTrigger()
+        }
+    }
+    @Published var wallpaperPhotoSelectionMode: WallpaperPhotoSelectionMode = .preferWidePhotos {
+        didSet {
+            guard hasLoadedInitialWallpaperPhotoSelectionMode else { return }
+            defaults.set(wallpaperPhotoSelectionMode.rawValue, forKey: Self.wallpaperPhotoSelectionModeDefaultsKey)
         }
     }
     @Published private(set) var isWaitingForPhotoAuthorization = false
@@ -440,6 +565,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
     private var hasLoadedInitialFrequency = false
+    private var hasLoadedInitialWallpaperPhotoSelectionMode = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
     private var nextScheduledCycleDueAt: Date?
     private var hasLoggedDeferredScheduledCycle = false
@@ -557,6 +683,13 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
         } else {
             self.frequency = nil
         }
+        if let raw = defaults.string(forKey: Self.wallpaperPhotoSelectionModeDefaultsKey),
+           let mode = WallpaperPhotoSelectionMode(rawValue: raw) {
+            self.wallpaperPhotoSelectionMode = mode
+        } else {
+            self.wallpaperPhotoSelectionMode = .preferWidePhotos
+        }
+        hasLoadedInitialWallpaperPhotoSelectionMode = true
         photoManager.photoAuthorizationDidChange = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.isWaitingForPhotoAuthorization = false
@@ -882,7 +1015,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
             return
         }
         let assets: [PHAsset]
-        switch photoManager.getRandomPhotos(count: screens.count) {
+        switch photoManager.getRandomPhotos(count: screens.count, selectionMode: wallpaperPhotoSelectionMode) {
         case .photos(let selectedAssets):
             isWaitingForPhotoAuthorization = false
             if selectedAssets.isEmpty {
