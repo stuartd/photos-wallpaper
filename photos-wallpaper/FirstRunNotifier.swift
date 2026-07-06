@@ -29,17 +29,17 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         iconView.contentTintColor = .controlAccentColor
         iconView.imageScaling = .scaleProportionallyUpOrDown
 
-        let titleLabel = NSTextField(labelWithString: "Photos Wallpaper is in the menu bar")
+        let titleLabel = NSTextField(labelWithString: "Use the menu bar icon")
         titleLabel.font = .boldSystemFont(ofSize: 17)
         titleLabel.alignment = .center
 
-        let bodyLabel = NSTextField(wrappingLabelWithString: "Look for the photo icon in the menu bar to change your wallpaper schedule, run a change now, or open logs.")
+        let bodyLabel = NSTextField(wrappingLabelWithString: "Click the photo icon at the top of your screen to set a schedule or change your wallpaper.")
         bodyLabel.font = .preferredFont(forTextStyle: .body)
         bodyLabel.textColor = .secondaryLabelColor
         bodyLabel.alignment = .center
         bodyLabel.maximumNumberOfLines = 0
 
-        let button = NSButton(title: "Got it", target: self, action: #selector(closeWelcomePanel))
+        let button = NSButton(title: "OK", target: self, action: #selector(closeWelcomePanel))
         button.bezelStyle = .rounded
         button.keyEquivalent = "\r"
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -47,7 +47,7 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         let stackView = NSStackView(views: [iconView, titleLabel, bodyLabel, button])
         stackView.orientation = .vertical
         stackView.alignment = .centerX
-        stackView.spacing = 12
+        stackView.spacing = 10
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         let contentView = NSView()
@@ -57,14 +57,14 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         NSLayoutConstraint.activate([
             iconView.widthAnchor.constraint(equalToConstant: 44),
             iconView.heightAnchor.constraint(equalToConstant: 44),
-            bodyLabel.widthAnchor.constraint(equalToConstant: 310),
+            bodyLabel.widthAnchor.constraint(equalToConstant: 280),
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 28),
             stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -28),
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 24),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
+            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 22),
+            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -22)
         ])
 
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 390, height: 210),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 190),
                             styleMask: [.titled, .closable, .nonactivatingPanel],
                             backing: .buffered,
                             defer: false)

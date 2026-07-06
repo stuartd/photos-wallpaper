@@ -165,6 +165,8 @@ struct photos_wallpaperApp: App {
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isAboutPanelOpen)
 
+            Divider()
+
             Button("Change Wallpaper Now") {
                 prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
