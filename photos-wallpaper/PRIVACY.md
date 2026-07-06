@@ -17,7 +17,7 @@ Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit
 
 ## Photos Wallpaper Album
 
-When you choose "Add Current Wallpaper(s) to Photos Wallpaper Album", Photos Wallpaper looks up the photos it set as wallpaper during the current app session and adds them to an album named "Photos Wallpaper" in your Photos library.
+When you choose "Add Current Wallpaper to Photos Wallpaper Album", Photos Wallpaper looks up the photos it set as wallpaper during the current app session and adds them to an album named "Photos Wallpaper" in your Photos library.
 
 Adding a photo to that album does not duplicate, edit, or move the photo. It only adds the existing Photos asset to the album. If you later remove a photo from that album in Photos, the original photo remains in your library unless you explicitly delete it from Photos.
 
@@ -37,7 +37,7 @@ To run schedules such as "When I log in" at the right time, Photos Wallpaper rea
 
 ## Wallpaper History
 
-When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Logs menu.
+When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Help > Logs menu.
 
 History entries may include:
 
@@ -51,7 +51,7 @@ History entries are kept for the current app session and cleared when Photos Wal
 
 ## Runtime Diagnostics
 
-Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible. You can view this from the app's Logs menu.
+Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible. You can view this from the app's Help > Logs menu.
 
 Diagnostics entries may include:
 
@@ -87,7 +87,7 @@ The data flow is intentionally simple:
 1. Photos Wallpaper reads image data from your Photos library after you grant permission.
 2. It creates a local wallpaper image file for the relevant display.
 3. It asks macOS to apply that file as desktop wallpaper.
-4. If you choose "Add Current Wallpaper(s) to Photos Wallpaper Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
+4. If you choose "Add Current Wallpaper to Photos Wallpaper Album", it adds the current wallpaper photo assets to the Photos Wallpaper album.
 5. It writes local history and diagnostics entries as described above.
 
 © Stuart Dunkeld 2026

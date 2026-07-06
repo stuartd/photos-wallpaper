@@ -138,7 +138,8 @@ struct photos_wallpaperApp: App {
 
     var body: some Scene {
         MenuBarExtra("Photos Wallpaper", systemImage: "photo") {
-            Picker("Wallpaper Schedule", selection: frequencyBinding) {
+            Picker("Set Schedule", selection: frequencyBinding) {
+                Text("No Schedule").tag(Optional<CycleFrequency>.none)
                 ForEach(CycleFrequency.allCases) { freq in
                     Text(freq.displayName).tag(Optional(freq))
                 }
@@ -154,12 +155,16 @@ struct photos_wallpaperApp: App {
                 promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
             }
 
-            Picker("Wallpaper Photos", selection: wallpaperPhotoSelectionModeBinding) {
-                ForEach(WallpaperPhotoSelectionMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
+            Button("Change Wallpaper Now") {
+                prepareForUserInitiatedSurface()
+                cycleController.triggerNow()
             }
-            .pickerStyle(.menu)
+            .disabled(isAboutPanelOpen)
+
+            Button("Add Current Wallpaper to Photos Wallpaper Album") {
+                prepareForUserInitiatedSurface()
+                currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
+            }
             .disabled(isAboutPanelOpen)
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
@@ -167,52 +172,46 @@ struct photos_wallpaperApp: App {
 
             Divider()
 
-            Button("Change Wallpaper Now") {
-                prepareForUserInitiatedSurface()
-                cycleController.triggerNow()
-            }
-            .disabled(isAboutPanelOpen)
-
-            Button("Add Current Wallpaper(s) to Photos Wallpaper Album") {
-                prepareForUserInitiatedSurface()
-                currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
-            }
-            .disabled(isAboutPanelOpen)
-
-            Menu("Logs") {
-                Button("Show Wallpaper History") {
+            Menu("Help") {
+                Button("Contact Support…") {
                     prepareForUserInitiatedSurface()
-                    historyLogger.openHistoryLog()
+                    documentOpener.openSupportPage()
                 }
 
-                Button("Show Runtime Log") {
+                Button("Privacy Policy") {
                     prepareForUserInitiatedSurface()
-                    runtimeLogger.openRuntimeLog()
+                    documentOpener.openPrivacyDocument()
                 }
-            }
-            .disabled(isAboutPanelOpen)
 
-            Divider()
+                Divider()
 
-            Button("About Photos Wallpaper") {
-                prepareForUserInitiatedSurface()
-                isAboutPanelOpen = true
-                defer { isAboutPanelOpen = false }
-                documentOpener.openAboutPanel()
-            }
-            .disabled(isAboutPanelOpen)
+                Picker("Wallpaper Photos", selection: wallpaperPhotoSelectionModeBinding) {
+                    ForEach(WallpaperPhotoSelectionMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
 
-            Divider()
+                Menu("Logs") {
+                    Button("Show Wallpaper History") {
+                        prepareForUserInitiatedSurface()
+                        historyLogger.openHistoryLog()
+                    }
 
-            Button("Privacy Policy") {
-                prepareForUserInitiatedSurface()
-                documentOpener.openPrivacyDocument()
-            }
-            .disabled(isAboutPanelOpen)
+                    Button("Show Runtime Log") {
+                        prepareForUserInitiatedSurface()
+                        runtimeLogger.openRuntimeLog()
+                    }
+                }
 
-            Button("Contact Support…") {
-                prepareForUserInitiatedSurface()
-                documentOpener.openSupportPage()
+                Divider()
+
+                Button("About Photos Wallpaper") {
+                    prepareForUserInitiatedSurface()
+                    isAboutPanelOpen = true
+                    defer { isAboutPanelOpen = false }
+                    documentOpener.openAboutPanel()
+                }
             }
             .disabled(isAboutPanelOpen)
 
