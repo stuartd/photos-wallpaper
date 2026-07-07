@@ -567,6 +567,7 @@ enum WallpaperPhotoSelector {
     private var hasLoadedInitialFrequency = false
     private var hasLoadedInitialWallpaperPhotoSelectionMode = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
+    private var isWaitingForSchedulePhotoAuthorization = false
     private var nextScheduledCycleDueAt: Date?
     private var hasLoggedDeferredScheduledCycle = false
     private var wakeGraceEndsAt: Date?
@@ -692,8 +693,7 @@ enum WallpaperPhotoSelector {
         hasLoadedInitialWallpaperPhotoSelectionMode = true
         photoManager.photoAuthorizationDidChange = { [weak self] in
             Task { @MainActor [weak self] in
-                self?.isWaitingForPhotoAuthorization = false
-                self?.retryPendingAuthorizationCycleIfNeeded()
+                self?.handlePhotoAuthorizationDidChange()
             }
         }
         hasLoadedInitialFrequency = true
@@ -738,6 +738,7 @@ enum WallpaperPhotoSelector {
         lastAutomaticLoginCycleStartedAt = nil
 
         guard let frequency else {
+            isWaitingForSchedulePhotoAuthorization = false
             clearStoredScheduledCycleDueAt()
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
@@ -745,14 +746,20 @@ enum WallpaperPhotoSelector {
         if preflightsPhotoAccessWhenScheduling && !isConfiguringInitialSchedule {
             switch photoManager.requestPhotoAccessIfNeeded() {
             case .ready:
+                isWaitingForSchedulePhotoAuthorization = false
                 isWaitingForPhotoAuthorization = false
             case .waitingForAuthorization:
+                isWaitingForSchedulePhotoAuthorization = true
                 isWaitingForPhotoAuthorization = true
             case .permissionDenied:
+                isWaitingForSchedulePhotoAuthorization = false
                 isWaitingForPhotoAuthorization = false
                 debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
                 notifier.notifyPhotoLibraryPermissionDenied()
+                clearScheduleAfterPhotoAccessDenied()
+                return
             case .unavailable:
+                isWaitingForSchedulePhotoAuthorization = false
                 isWaitingForPhotoAuthorization = false
                 debugLog("WallpaperCycleController: Photos authorization unavailable while configuring schedule.")
             }
@@ -1242,6 +1249,43 @@ enum WallpaperPhotoSelector {
         pendingAuthorizationRetryTrigger = nil
         debugLog("WallpaperCycleController: retrying wallpaper cycle after Photos authorization changed.")
         tick(trigger: trigger)
+    }
+
+    private func handlePhotoAuthorizationDidChange() {
+        isWaitingForPhotoAuthorization = false
+        let wasWaitingForSchedulePhotoAuthorization = isWaitingForSchedulePhotoAuthorization
+
+        switch photoManager.requestPhotoAccessIfNeeded() {
+        case .ready:
+            isWaitingForSchedulePhotoAuthorization = false
+            retryPendingAuthorizationCycleIfNeeded()
+        case .waitingForAuthorization:
+            isWaitingForSchedulePhotoAuthorization = wasWaitingForSchedulePhotoAuthorization
+            isWaitingForPhotoAuthorization = true
+        case .permissionDenied:
+            let deniedTrigger = pendingAuthorizationRetryTrigger
+            isWaitingForSchedulePhotoAuthorization = false
+            pendingAuthorizationRetryTrigger = nil
+            clearScheduleAfterPhotoAccessDenied()
+            if let deniedTrigger {
+                notifyUnavailablePhotos(reason: .permissionDenied, trigger: deniedTrigger)
+            } else if wasWaitingForSchedulePhotoAuthorization {
+                notifier.notifyPhotoLibraryPermissionDenied()
+            }
+        case .unavailable:
+            let unavailableTrigger = pendingAuthorizationRetryTrigger
+            isWaitingForSchedulePhotoAuthorization = false
+            pendingAuthorizationRetryTrigger = nil
+            if let unavailableTrigger {
+                notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: unavailableTrigger)
+            }
+        }
+    }
+
+    private func clearScheduleAfterPhotoAccessDenied() {
+        guard frequency != nil else { return }
+        debugLog("WallpaperCycleController: clearing wallpaper schedule because Photos access was denied.")
+        frequency = nil
     }
 
     private enum UnavailablePhotosReason {

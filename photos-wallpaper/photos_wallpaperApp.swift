@@ -152,7 +152,8 @@ struct photos_wallpaperApp: App {
             }
             .onChange(of: cycleController.isWaitingForPhotoAuthorization) { _, isWaiting in
                 guard !isWaiting else { return }
-                promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
+                guard pendingStartAtLoginPromptFrequency != nil else { return }
+                promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
 
             Button("Change Wallpaper Now") {
@@ -229,7 +230,7 @@ struct photos_wallpaperApp: App {
             set: { newFrequency in
                 prepareForUserInitiatedSurface()
                 cycleController.frequency = newFrequency
-                promptToEnableStartAtLoginIfNeeded(for: newFrequency)
+                promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
         )
     }
@@ -276,8 +277,8 @@ struct photos_wallpaperApp: App {
         isStartAtLoginPromptRetryScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             isStartAtLoginPromptRetryScheduled = false
-            guard let pendingStartAtLoginPromptFrequency else { return }
-            promptToEnableStartAtLoginIfNeeded(for: pendingStartAtLoginPromptFrequency)
+            guard pendingStartAtLoginPromptFrequency != nil else { return }
+            promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
         }
     }
 }

@@ -492,6 +492,46 @@ struct PhotosWallpaperTests {
 
         #expect(photoManager.requestPhotoAccessCallCount == 1)
         #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
+        #expect(controller.frequency == nil)
+        #expect(defaults.string(forKey: "cycleFrequency") == nil)
+        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(photoManager.getRandomPhotosCallCount == 0)
+        #expect(photoManager.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func denyingPhotoAccessWhileSelectingScheduledFrequencyResetsSchedule() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        photoManager.photoAccessPreflightResult = .waitingForAuthorization
+        let notifier = FakeWallpaperCycleNotifier()
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        controller.frequency = .day
+
+        #expect(controller.frequency == .day)
+        #expect(controller.isWaitingForPhotoAuthorization)
+        let expectedIntervals: [TimeInterval] = [24 * 60 * 60]
+        #expect(scheduler.scheduledIntervals == expectedIntervals)
+
+        photoManager.photoAccessPreflightResult = .permissionDenied
+        photoManager.photoAuthorizationDidChange?()
+        await Task.yield()
+
+        #expect(photoManager.requestPhotoAccessCallCount == 2)
+        #expect(!controller.isWaitingForPhotoAuthorization)
+        #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
+        #expect(controller.frequency == nil)
+        #expect(defaults.string(forKey: "cycleFrequency") == nil)
+        #expect(scheduler.createdTimers.first?.invalidateCallCount == 1)
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
