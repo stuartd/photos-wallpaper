@@ -1,30 +1,29 @@
+
 ### [Photos Wallpaper](https://photos-wallpaper.app)
 
-Photos Wallpaper is a native macOS menu bar app that brings back random Photos-library wallpaper rotation.
+A native macOS menu bar app that brings back random wallpaper rotation from your Photos library.
+
+Available [on the Mac App Store](https://apps.apple.com/gb/app/photos-wallpaper/id6769191842?mt=12).
 
 Older versions of macOS let you use your Photos library as a rotating wallpaper source and choose a random photo at a fixed interval.[^1]
 
-That functionality is no longer available in macOS 26 Tahoe.[^2] You can point wallpaper rotation at a folder, but that is not the same as using the Photos library many Mac users already curate. Photos Wallpaper recreates it as a simple menu bar app.
+That functionality is no longer available in macOS 26 Tahoe.[^2] You can have rotate wallpapers from a *folder*, but that is not the same as using the Photos library.
 
-I built this for two reasons: I really missed the feature, and I wanted to see what it would be like to use agentic AI from the product side as a Mac user whose usual background is .NET and Windows apps. Before this project, I had not written Swift or opened Xcode.
+Photos Wallpaper recreates it as a simple menu bar app.
 
-The project is also a case study in directing agentic AI to design, implement, test, package, and iterate a real native app through TestFlight, with me acting as product owner, QA, release manager, and final decision-maker.
+I built this for two reasons: I really missed the feature, and I wanted to see what it would be like to use agentic AI from the product side as a Mac user whose usual background is .NET and Windows apps. Before this project, I had not written any Swift or used Xcode.
+
+The project is also a case study in directing agentic AI to design, implement, test, package, and iterate a real native app to the App Store, with me acting as product owner, QA, release manager, and final decision-maker.
 
 ## Featured Project Summary
 
 - **Role:** Product direction, prompt strategy, QA, release management, and final technical decision-making
 - **Background:** Built outside my usual .NET/Windows stack, starting with no Swift experience
-- **Outcome:** Native macOS app currently in TestFlight, with an App Store release as the target
+- **Outcome:** Native macOS app in the App Store
 - **Stack:** Swift, SwiftUI, AppKit, Photos.framework, ServiceManagement, UserNotifications, Xcode, GitHub Actions
-- **Agentic AI use:** Directed AI agents through feature design, implementation, edge-case handling, tests, copy, packaging, and release preparation
-- **Evidence of depth:** Unit tests, CI, privacy documentation, release scripts, app metadata, local diagnostics, and real-world use on my own Mac
-
-## Status
-
-- In TestFlight
-- Built as a native macOS menu bar app
-- Intended for Mac App Store release
-- Uses local Photos access only; no accounts, analytics, ads, or server-side storage
+- **Agentic AI use:** Directed AI agent (Codex) through feature design, implementation, edge-case handling, tests, copy, packaging, and release preparation
+- **Evidence of depth:** Unit tests, CI, privacy documentation, release scripts, app metadata, local diagnostics
+- **Privacy:** Uses local Photos access only; no accounts, analytics, ads, or server-side storage
 
 ## What It Does
 
@@ -35,7 +34,7 @@ The project is also a case study in directing agentic AI to design, implement, t
 - Supports preset wallpaper schedules
 - Can run at login
 - Handles wake, unlock, and inactive user-session cases
-- Keeps local wallpaper history and runtime diagnostics
+- Logs local wallpaper history and runtime diagnostics
 - Can add the current wallpaper photo or photos to a "Photos Wallpaper" album
 - Includes a local privacy document explaining what data is read and written
 
@@ -57,13 +56,13 @@ The Photos Wallpaper name, app icon, screenshots, and other branding assets are 
 
 This project demonstrates directing agentic AI through a domain and language I did not know well enough to develop and ship in:
 
-- translating a user problem into a native macOS product
-- steering implementation across SwiftUI, AppKit, Photos.framework, ServiceManagement, UserNotifications, and macOS wallpaper APIs
-- testing permission flows, multi-display behavior, scheduling, login items, sleep/wake behavior, and local logging
-- iterating based on real use on my own Mac
-- preparing the app for TestFlight and App Store review
+- Translating a project idea into a native macOS product
+- Steering implementation across SwiftUI, AppKit, Photos.framework, ServiceManagement, UserNotifications, and macOS wallpaper APIs
+- Testing permission flows, multi-display behavior, scheduling, login items, sleep/wake behavior, and local logging
+- Iterating based on real use on my own Mac
+- Preparing the app for TestFlight, review builds, and the App Store release
 
-The repo is evidence that the work went beyond a prototype. It includes unit tests, CI, release scripts, privacy copy, app metadata, app icons, local diagnostics, and distribution-oriented build paths.
+The repo includes unit tests, CI, release scripts, privacy copy, app metadata, app icons, local diagnostics, and distribution-oriented build paths.
 
 ## Verification
 
