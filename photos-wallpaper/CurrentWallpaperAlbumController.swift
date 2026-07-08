@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Photos
 
 enum CurrentWallpaperAlbumAdditionResult: Equatable {
@@ -111,7 +112,9 @@ struct CurrentWallpaperAlbumAdder {
     }
 }
 
-@MainActor final class CurrentWallpaperAlbumController {
+@MainActor final class CurrentWallpaperAlbumController: ObservableObject {
+    @Published private(set) var isPresentingAlert = false
+
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
     private let showAlert: @MainActor (String, String) -> Void
@@ -119,7 +122,7 @@ struct CurrentWallpaperAlbumAdder {
     convenience init(historyLogger: WallpaperHistoryLogger) {
         self.init(historyLogger: historyLogger,
                   photoManager: PhotoManager.shared,
-                  showAlert: CurrentWallpaperAlbumController.presentAlert)
+                  showAlert: CurrentWallpaperAlbumController.runModalAlert)
     }
 
     init(historyLogger: WallpaperHistoryLogger,
@@ -144,32 +147,38 @@ struct CurrentWallpaperAlbumAdder {
         switch result {
         case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
             if missingIdentifierCount == 0, failedAddCount == 0 {
-                showAlert(albumSummary(addedCount: addedCount,
-                                       alreadyInAlbumCount: alreadyInAlbumCount,
-                                       missingIdentifierCount: missingIdentifierCount,
-                                       failedAddCount: failedAddCount),
-                          "")
+                presentAlert(title: albumSummary(addedCount: addedCount,
+                                                 alreadyInAlbumCount: alreadyInAlbumCount,
+                                                 missingIdentifierCount: missingIdentifierCount,
+                                                 failedAddCount: failedAddCount),
+                             message: "")
                 return
             }
-            showAlert(albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
-                                        failedAddCount: failedAddCount),
-                      albumSummary(addedCount: addedCount,
-                                   alreadyInAlbumCount: alreadyInAlbumCount,
-                                   missingIdentifierCount: missingIdentifierCount,
-                                   failedAddCount: failedAddCount))
+            presentAlert(title: albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
+                                                  failedAddCount: failedAddCount),
+                         message: albumSummary(addedCount: addedCount,
+                                               alreadyInAlbumCount: alreadyInAlbumCount,
+                                               missingIdentifierCount: missingIdentifierCount,
+                                               failedAddCount: failedAddCount))
         case .noRememberedWallpapers:
-            showAlert("No Current Wallpapers Yet",
-                      "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
+            presentAlert(title: "No Current Wallpapers Yet",
+                         message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
         case .waitingForAuthorization:
-            showAlert("Photos Access Needed",
-                      "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
+            presentAlert(title: "Photos Access Needed",
+                         message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
         case .permissionDenied:
-            showAlert("Photos Access Needed",
-                      "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
+            presentAlert(title: "Photos Access Needed",
+                         message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
         case .unavailable:
-            showAlert("Photos Unavailable",
-                      "Photos Wallpaper could not search your Photos library right now.")
+            presentAlert(title: "Photos Unavailable",
+                         message: "Photos Wallpaper could not search your Photos library right now.")
         }
+    }
+
+    private func presentAlert(title: String, message: String) {
+        isPresentingAlert = true
+        defer { isPresentingAlert = false }
+        showAlert(title, message)
     }
 
     private func albumSummary(addedCount: Int, alreadyInAlbumCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
@@ -240,7 +249,7 @@ struct CurrentWallpaperAlbumAdder {
         return "Some Wallpaper Photos Could Not Be Added"
     }
 
-    private static func presentAlert(title: String, message: String) {
+    private static func runModalAlert(title: String, message: String) {
         let alert = NSAlert()
         alert.messageText = title
         if !message.isEmpty {

@@ -100,6 +100,7 @@ struct photos_wallpaperApp: App {
     private let singleInstanceLock: SingleInstanceLock?
     @StateObject private var firstRunStartupController: FirstRunStartupController
     @StateObject private var cycleController: WallpaperCycleController
+    @StateObject private var currentWallpaperAlbumController: CurrentWallpaperAlbumController
     @StateObject private var loginItemManager = LoginItemManager()
     @State private var isAboutPanelOpen = false
     @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
@@ -107,7 +108,6 @@ struct photos_wallpaperApp: App {
     private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
-    private let currentWallpaperAlbumController: CurrentWallpaperAlbumController
 
     init() {
         self.singleInstanceLock = Self.acquireSingleInstanceLock()
@@ -116,7 +116,7 @@ struct photos_wallpaperApp: App {
         let historyLogger = WallpaperHistoryLogger()
         _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
         self.historyLogger = historyLogger
-        self.currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
+        _currentWallpaperAlbumController = StateObject(wrappedValue: CurrentWallpaperAlbumController(historyLogger: historyLogger))
         _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
         firstRunStartupController.scheduleWelcomeIfNeeded()
     }
@@ -145,7 +145,7 @@ struct photos_wallpaperApp: App {
                 }
             }
             .pickerStyle(.menu)
-            .disabled(isAboutPanelOpen)
+            .disabled(isMenuInteractionDisabled)
             .onAppear {
                 prepareForUserInitiatedSurface()
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
@@ -160,16 +160,16 @@ struct photos_wallpaperApp: App {
                 prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
             }
-            .disabled(isAboutPanelOpen)
+            .disabled(isMenuInteractionDisabled)
 
             Button("Add Current Wallpaper to Photos Wallpaper Album") {
                 prepareForUserInitiatedSurface()
                 currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }
-            .disabled(isAboutPanelOpen)
+            .disabled(isMenuInteractionDisabled)
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
-                .disabled(isAboutPanelOpen)
+                .disabled(isMenuInteractionDisabled)
 
             Divider()
 
@@ -214,14 +214,19 @@ struct photos_wallpaperApp: App {
                     documentOpener.openAboutPanel()
                 }
             }
-            .disabled(isAboutPanelOpen)
+            .disabled(isMenuInteractionDisabled)
 
             Divider()
 
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
+            .disabled(isMenuInteractionDisabled)
         }
+    }
+
+    private var isMenuInteractionDisabled: Bool {
+        isAboutPanelOpen || currentWallpaperAlbumController.isPresentingAlert
     }
 
     private var frequencyBinding: Binding<CycleFrequency?> {

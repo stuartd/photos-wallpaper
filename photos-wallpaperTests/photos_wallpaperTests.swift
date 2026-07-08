@@ -2164,6 +2164,33 @@ struct PhotosWallpaperTests {
         #expect(result.alerts.first?.message == "One wallpaper photo is no longer in Photos, so it could not be added.")
     }
 
+    @Test func currentWallpaperAlbumControllerTracksAlertWhileConfirmationIsPresented() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        var observedAlertState: Bool?
+        var controller: CurrentWallpaperAlbumController!
+        controller = CurrentWallpaperAlbumController(historyLogger: logger,
+                                                     photoManager: photoManager) { _, _ in
+            observedAlertState = controller.isPresentingAlert
+        }
+        logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
+                                      screenName: "Screen 1",
+                                      screenCount: 1,
+                                      timestamp: Date(timeIntervalSince1970: 0))
+
+        #expect(!controller.isPresentingAlert)
+        controller.addCurrentWallpapersToAlbum()
+        let didShowConfirmation = await waitForCondition {
+            observedAlertState != nil
+        }
+
+        #expect(didShowConfirmation)
+        #expect(observedAlertState == true)
+        #expect(!controller.isPresentingAlert)
+    }
+
     private func currentWallpaperAlbumConfirmation(assetCount: Int,
                                                    albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
                                                    missingLookupIdentifiers: Set<String> = [],
