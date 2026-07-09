@@ -383,6 +383,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 enum WallpaperPhotoSelectionMode: String, CaseIterable, Identifiable {
     case useAllPhotos
     case preferWidePhotos
+    case preferTallPhotos
 
     var id: String { rawValue }
 
@@ -392,13 +393,15 @@ enum WallpaperPhotoSelectionMode: String, CaseIterable, Identifiable {
             return "Use All Photos"
         case .preferWidePhotos:
             return "Prefer Wide Photos"
+        case .preferTallPhotos:
+            return "Prefer Tall Photos"
         }
     }
 }
 
 enum WallpaperPhotoSelector {
-    private static let minimumPreferWideProbeCount = 100
-    private static let preferWideProbeMultiplier = 50
+    private static let minimumPreferredOrientationProbeCount = 100
+    private static let preferredOrientationProbeMultiplier = 50
 
     static func randomIndexes(photoCount: Int,
                               count: Int,
@@ -414,29 +417,49 @@ enum WallpaperPhotoSelector {
                                   count: Int,
                                   randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
                                   isWide: (Int) -> Bool) -> [Int] {
-        guard photoCount > 0, count > 0 else { return [] }
-        let selectionCount = min(count, photoCount)
-        let probeLimit = min(photoCount, max(Self.minimumPreferWideProbeCount,
-                                             selectionCount * Self.preferWideProbeMultiplier))
-        let selectedWideIndexes = randomWideIndexes(photoCount: photoCount,
-                                                    count: selectionCount,
-                                                    probeLimit: probeLimit,
-                                                    randomIndexInRange: randomIndexInRange,
-                                                    isWide: isWide)
-        guard selectedWideIndexes.count < selectionCount else { return selectedWideIndexes }
-
-        let fallbackIndexes = randomUniqueIndexes(photoCount: photoCount,
-                                                  count: selectionCount - selectedWideIndexes.count,
-                                                  excluding: Set(selectedWideIndexes),
-                                                  randomIndexInRange: randomIndexInRange)
-        return selectedWideIndexes + fallbackIndexes
+        preferOrientationIndexes(photoCount: photoCount,
+                                 count: count,
+                                 randomIndexInRange: randomIndexInRange,
+                                 isPreferredOrientation: isWide)
     }
 
-    private static func randomWideIndexes(photoCount: Int,
-                                          count: Int,
-                                          probeLimit: Int,
-                                          randomIndexInRange: (Range<Int>) -> Int,
-                                          isWide: (Int) -> Bool) -> [Int] {
+    static func preferTallIndexes(photoCount: Int,
+                                  count: Int,
+                                  randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
+                                  isTall: (Int) -> Bool) -> [Int] {
+        preferOrientationIndexes(photoCount: photoCount,
+                                 count: count,
+                                 randomIndexInRange: randomIndexInRange,
+                                 isPreferredOrientation: isTall)
+    }
+
+    private static func preferOrientationIndexes(photoCount: Int,
+                                                 count: Int,
+                                                 randomIndexInRange: (Range<Int>) -> Int,
+                                                 isPreferredOrientation: (Int) -> Bool) -> [Int] {
+        guard photoCount > 0, count > 0 else { return [] }
+        let selectionCount = min(count, photoCount)
+        let probeLimit = min(photoCount, max(Self.minimumPreferredOrientationProbeCount,
+                                             selectionCount * Self.preferredOrientationProbeMultiplier))
+        let selectedPreferredIndexes = randomPreferredOrientationIndexes(photoCount: photoCount,
+                                                                        count: selectionCount,
+                                                                        probeLimit: probeLimit,
+                                                                        randomIndexInRange: randomIndexInRange,
+                                                                        isPreferredOrientation: isPreferredOrientation)
+        guard selectedPreferredIndexes.count < selectionCount else { return selectedPreferredIndexes }
+
+        let fallbackIndexes = randomUniqueIndexes(photoCount: photoCount,
+                                                  count: selectionCount - selectedPreferredIndexes.count,
+                                                  excluding: Set(selectedPreferredIndexes),
+                                                  randomIndexInRange: randomIndexInRange)
+        return selectedPreferredIndexes + fallbackIndexes
+    }
+
+    private static func randomPreferredOrientationIndexes(photoCount: Int,
+                                                          count: Int,
+                                                          probeLimit: Int,
+                                                          randomIndexInRange: (Range<Int>) -> Int,
+                                                          isPreferredOrientation: (Int) -> Bool) -> [Int] {
         var probedIndexes = Set<Int>()
         var selectedIndexes: [Int] = []
         let attemptLimit = max(probeLimit * 10, 20)
@@ -452,7 +475,7 @@ enum WallpaperPhotoSelector {
                   probedIndexes.insert(index).inserted else {
                 continue
             }
-            if isWide(index) {
+            if isPreferredOrientation(index) {
                 selectedIndexes.append(index)
             }
         }

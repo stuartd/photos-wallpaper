@@ -137,11 +137,20 @@ final class PhotoManager: PhotoManaging {
                                                             count: selectionCount) { index in
                 Self.isWideWallpaperCandidate(allPhotos.object(at: index))
             }
+        case .preferTallPhotos:
+            return WallpaperPhotoSelector.preferTallIndexes(photoCount: photoCount,
+                                                            count: selectionCount) { index in
+                Self.isTallWallpaperCandidate(allPhotos.object(at: index))
+            }
         }
     }
 
     private static func isWideWallpaperCandidate(_ asset: PHAsset) -> Bool {
         asset.pixelWidth > asset.pixelHeight
+    }
+
+    private static func isTallWallpaperCandidate(_ asset: PHAsset) -> Bool {
+        asset.pixelHeight > asset.pixelWidth
     }
 
     /// Returns a human-friendly label that is still unique enough to disambiguate duplicates.

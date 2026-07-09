@@ -36,6 +36,7 @@ struct PhotosWallpaperTests {
     @Test func wallpaperPhotoSelectionModeLabelsMatchMenuCopy() {
         #expect(WallpaperPhotoSelectionMode.useAllPhotos.displayName == "Use All Photos")
         #expect(WallpaperPhotoSelectionMode.preferWidePhotos.displayName == "Prefer Wide Photos")
+        #expect(WallpaperPhotoSelectionMode.preferTallPhotos.displayName == "Prefer Tall Photos")
     }
 
     @Test func wallpaperPhotoSelectorPrefersWideIndexesBeforeFallback() {
@@ -49,6 +50,22 @@ struct PhotosWallpaperTests {
             return range.lowerBound + (nextRandomIndex % (range.upperBound - range.lowerBound))
         }) { index in
             wideStatuses[index]
+        }
+
+        #expect(selectedIndexes == [1, 3, 0])
+    }
+
+    @Test func wallpaperPhotoSelectorPrefersTallIndexesBeforeFallback() {
+        let tallStatuses = [false, true, false, true]
+        var nextRandomIndex = 0
+
+        let selectedIndexes = WallpaperPhotoSelector.preferTallIndexes(photoCount: tallStatuses.count,
+                                                                       count: 3,
+                                                                       randomIndexInRange: { range in
+            defer { nextRandomIndex += 1 }
+            return range.lowerBound + (nextRandomIndex % (range.upperBound - range.lowerBound))
+        }) { index in
+            tallStatuses[index]
         }
 
         #expect(selectedIndexes == [1, 3, 0])
@@ -1070,6 +1087,36 @@ struct PhotosWallpaperTests {
 
         #expect(photoManager.requestedPhotoSelectionModes == [.useAllPhotos])
         #expect(photoManager.requestedAssets.map(ObjectIdentifier.init) == [ObjectIdentifier(verticalAsset)])
+    }
+
+    @Test func triggerNowCanPreferTallPhotosWhenSelected() async {
+        let defaults = FakeDefaults()
+        let scheduler = FakeTimerScheduler()
+        let wideAsset = makeFakeAsset()
+        let tallAsset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [wideAsset, tallAsset],
+                                            assetTallStatuses: [false, true])
+        guard let baseScreen = NSScreen.screens.first else {
+            Issue.record("Expected at least one screen for wallpaper tests.")
+            return
+        }
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: [baseScreen]),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+        controller.wallpaperPhotoSelectionMode = .preferTallPhotos
+
+        controller.triggerNow()
+        await Task.yield()
+
+        #expect(photoManager.requestedPhotoSelectionModes == [.preferTallPhotos])
+        #expect(photoManager.requestedAssets.map(ObjectIdentifier.init) == [ObjectIdentifier(tallAsset)])
     }
 
     @Test func triggerNowReusesLastPhotoWhenThereAreFewerPhotosThanScreens() async {
@@ -2239,6 +2286,7 @@ private final class FakePhotoManager: PhotoManaging {
     private let assetsToReturn: [PHAsset]
     private let assetNames: [ObjectIdentifier: String]
     private let assetWideStatuses: [ObjectIdentifier: Bool]
+    private let assetTallStatuses: [ObjectIdentifier: Bool]
     private let completesImageRequestsImmediately: Bool
     var photoSelectionOverride: PhotoSelectionResult?
     var photoAccessPreflightResult: PhotoAccessPreflightResult = .ready
@@ -2262,6 +2310,7 @@ private final class FakePhotoManager: PhotoManaging {
     init(assetsToReturn: [PHAsset]? = nil,
          assetNames: [String]? = nil,
          assetWideStatuses: [Bool]? = nil,
+         assetTallStatuses: [Bool]? = nil,
          completesImageRequestsImmediately: Bool = true,
          photoSelectionOverride: PhotoSelectionResult? = nil) {
         let assets = assetsToReturn ?? (0..<8).map { _ in makeFakeAsset() }
@@ -2278,6 +2327,11 @@ private final class FakePhotoManager: PhotoManaging {
         } else {
             self.assetWideStatuses = [:]
         }
+        if let assetTallStatuses {
+            self.assetTallStatuses = Dictionary(uniqueKeysWithValues: zip(assets.map(ObjectIdentifier.init), assetTallStatuses))
+        } else {
+            self.assetTallStatuses = [:]
+        }
     }
 
     func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult {
@@ -2292,14 +2346,13 @@ private final class FakePhotoManager: PhotoManaging {
         case .useAllPhotos:
             selectedIndexes = Array(0..<selectionCount)
         case .preferWidePhotos:
-            let allIndexes = Array(assetsToReturn.indices)
-            let preferredIndexes = allIndexes.filter { index in
-                assetWideStatuses[ObjectIdentifier(assetsToReturn[index]), default: true]
+            selectedIndexes = indexesPreferring(selectionCount: selectionCount) { asset in
+                assetWideStatuses[ObjectIdentifier(asset), default: true]
             }
-            let fallbackIndexes = allIndexes.filter { index in
-                !assetWideStatuses[ObjectIdentifier(assetsToReturn[index]), default: true]
+        case .preferTallPhotos:
+            selectedIndexes = indexesPreferring(selectionCount: selectionCount) { asset in
+                assetTallStatuses[ObjectIdentifier(asset), default: true]
             }
-            selectedIndexes = Array((preferredIndexes + fallbackIndexes).prefix(selectionCount))
         }
         var assets = selectedIndexes.map { assetsToReturn[$0] }
 
@@ -2307,6 +2360,17 @@ private final class FakePhotoManager: PhotoManaging {
             assets.append(contentsOf: Array(repeating: fallbackAsset, count: count - assets.count))
         }
         return .photos(assets)
+    }
+
+    private func indexesPreferring(selectionCount: Int, isPreferred: (PHAsset) -> Bool) -> [Int] {
+        let allIndexes = Array(assetsToReturn.indices)
+        let preferredIndexes = allIndexes.filter { index in
+            isPreferred(assetsToReturn[index])
+        }
+        let fallbackIndexes = allIndexes.filter { index in
+            !isPreferred(assetsToReturn[index])
+        }
+        return Array((preferredIndexes + fallbackIndexes).prefix(selectionCount))
     }
 
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult {
