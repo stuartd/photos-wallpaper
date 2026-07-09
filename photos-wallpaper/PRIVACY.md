@@ -26,7 +26,6 @@ Adding a photo to that album does not duplicate, edit, or move the photo. It onl
 The app stores a few settings locally on your Mac:
 
 - the wallpaper refresh frequency you selected
-- whether wallpaper selection should prefer wide photos or use all photos
 - whether the app should start at login, if you enable that option
 - local wallpaper history
 - local runtime diagnostics

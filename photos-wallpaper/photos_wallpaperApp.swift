@@ -184,15 +184,6 @@ struct photos_wallpaperApp: App {
                     documentOpener.openPrivacyDocument()
                 }
 
-                Divider()
-
-                Picker("Wallpaper Photos", selection: wallpaperPhotoSelectionModeBinding) {
-                    ForEach(WallpaperPhotoSelectionMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-
                 Menu("Logs") {
                     Button("Show Wallpaper History") {
                         prepareForUserInitiatedSurface()
@@ -236,16 +227,6 @@ struct photos_wallpaperApp: App {
                 prepareForUserInitiatedSurface()
                 cycleController.frequency = newFrequency
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
-            }
-        )
-    }
-
-    private var wallpaperPhotoSelectionModeBinding: Binding<WallpaperPhotoSelectionMode> {
-        Binding(
-            get: { cycleController.wallpaperPhotoSelectionMode },
-            set: { newMode in
-                prepareForUserInitiatedSurface()
-                cycleController.wallpaperPhotoSelectionMode = newMode
             }
         )
     }
