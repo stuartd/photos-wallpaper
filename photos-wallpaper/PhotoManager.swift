@@ -53,7 +53,7 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
 protocol PhotoManaging: AnyObject {
     var photoAuthorizationDidChange: (() -> Void)? { get set }
 
-    func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult
+    func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
@@ -87,11 +87,9 @@ final class PhotoManager: PhotoManaging {
         self.wallpaperManager = wallpaperManager
     }
 
-    /// Returns one asset per screen.
-    ///
-    /// If there are fewer assets than screens, the last selected asset is reused so every display
-    /// still receives a wallpaper for this cycle.
-    func getRandomPhotos(count: Int, selectionMode: WallpaperPhotoSelectionMode) -> PhotoSelectionResult {
+    /// Returns one asset per connected display, preferring each display's visible orientation from
+    /// a bounded random sample. Square displays can use any photo shape.
+    func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult {
         switch refreshPhotos() {
         case .ready:
             break
@@ -106,51 +104,24 @@ final class PhotoManager: PhotoManaging {
         }
 
         let photosCount = allPhotos?.count ?? 0
-        guard count > 0, let allPhotos, photosCount > 0 else {
-            debugLog("PhotoManager: no photos available for count \(count). Library count: \(photosCount).")
+        guard !displayOrientations.isEmpty, let allPhotos, photosCount > 0 else {
+            debugLog("PhotoManager: no photos available for \(displayOrientations.count) screen(s). Library count: \(photosCount).")
             return .unavailable
         }
-        debugLog("PhotoManager: selecting photos for \(count) screen(s) from \(photosCount) library asset(s).")
-        let selectionCount = min(count, photosCount)
-        let selectedIndexes = selectedPhotoIndexes(photoCount: photosCount,
-                                                   selectionCount: selectionCount,
-                                                   selectionMode: selectionMode,
-                                                   allPhotos: allPhotos)
-        var selectedPhotos = selectedIndexes.map { allPhotos.object(at: $0) }
-        if let fallbackPhoto = selectedPhotos.last, selectedPhotos.count < count {
-            selectedPhotos.append(contentsOf: Array(repeating: fallbackPhoto, count: count - selectedPhotos.count))
-        }
+        debugLog("PhotoManager: selecting photos for \(displayOrientations.count) screen(s) from \(photosCount) library asset(s).")
+        let selectedIndexes = selectedPhotoIndexes(for: displayOrientations, allPhotos: allPhotos)
+        let selectedPhotos = selectedIndexes.map { allPhotos.object(at: $0) }
         debugLog("PhotoManager: returning \(selectedPhotos.count) photo asset(s).")
         return .photos(selectedPhotos)
     }
 
-    private func selectedPhotoIndexes(photoCount: Int,
-                                      selectionCount: Int,
-                                      selectionMode: WallpaperPhotoSelectionMode,
+    private func selectedPhotoIndexes(for displayOrientations: [WallpaperOrientation],
                                       allPhotos: PHFetchResult<PHAsset>) -> [Int] {
-        switch selectionMode {
-        case .useAllPhotos:
-            return WallpaperPhotoSelector.randomIndexes(photoCount: photoCount,
-                                                        count: selectionCount)
-        case .preferWidePhotos:
-            return WallpaperPhotoSelector.preferWideIndexes(photoCount: photoCount,
-                                                            count: selectionCount) { index in
-                Self.isWideWallpaperCandidate(allPhotos.object(at: index))
-            }
-        case .preferTallPhotos:
-            return WallpaperPhotoSelector.preferTallIndexes(photoCount: photoCount,
-                                                            count: selectionCount) { index in
-                Self.isTallWallpaperCandidate(allPhotos.object(at: index))
-            }
+        return WallpaperPhotoSelector.indexes(for: displayOrientations,
+                                              photoCount: allPhotos.count) { index in
+            let asset = allPhotos.object(at: index)
+            return WallpaperOrientation(size: CGSize(width: asset.pixelWidth, height: asset.pixelHeight))
         }
-    }
-
-    private static func isWideWallpaperCandidate(_ asset: PHAsset) -> Bool {
-        asset.pixelWidth > asset.pixelHeight
-    }
-
-    private static func isTallWallpaperCandidate(_ asset: PHAsset) -> Bool {
-        asset.pixelHeight > asset.pixelWidth
     }
 
     /// Returns a human-friendly label that is still unique enough to disambiguate duplicates.

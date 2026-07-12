@@ -11,7 +11,6 @@ import UserNotifications
 
 protocol WallpaperCycleControlling: AnyObject, ObservableObject {
     var frequency: CycleFrequency? { get set }
-    var wallpaperPhotoSelectionMode: WallpaperPhotoSelectionMode { get set }
     func triggerNow()
 }
 
@@ -380,21 +379,19 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
     }
 }
 
-enum WallpaperPhotoSelectionMode: String, CaseIterable, Identifiable {
-    case useAllPhotos
-    case preferWidePhotos
-    case preferTallPhotos
+/// The visible shape of a display or photo. Square displays deliberately accept any photo shape.
+enum WallpaperOrientation: Hashable {
+    case landscape
+    case portrait
+    case square
 
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .useAllPhotos:
-            return "Use All Photos"
-        case .preferWidePhotos:
-            return "Prefer Wide Photos"
-        case .preferTallPhotos:
-            return "Prefer Tall Photos"
+    init(size: CGSize) {
+        if size.width > size.height {
+            self = .landscape
+        } else if size.height > size.width {
+            self = .portrait
+        } else {
+            self = .square
         }
     }
 }
@@ -403,56 +400,83 @@ enum WallpaperPhotoSelector {
     private static let minimumPreferredOrientationProbeCount = 100
     private static let preferredOrientationProbeMultiplier = 50
 
-    static func randomIndexes(photoCount: Int,
-                              count: Int,
-                              randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) }) -> [Int] {
-        guard photoCount > 0, count > 0 else { return [] }
-        return randomUniqueIndexes(photoCount: photoCount,
-                                   count: min(count, photoCount),
-                                   excluding: [],
-                                   randomIndexInRange: randomIndexInRange)
+    /// Selects one asset index for every display. Landscape and portrait displays each probe only
+    /// a bounded random subset of the library; square displays accept a randomly selected photo.
+    static func indexes(for displayOrientations: [WallpaperOrientation],
+                        photoCount: Int,
+                        randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
+                        orientationAtIndex: (Int) -> WallpaperOrientation) -> [Int] {
+        guard photoCount > 0, !displayOrientations.isEmpty else { return [] }
+
+        let landscapeIndexes = preferredIndexes(photoCount: photoCount,
+                                                count: displayOrientations.filter { $0 == .landscape }.count,
+                                                randomIndexInRange: randomIndexInRange) {
+            orientationAtIndex($0) == .landscape
+        }
+        let portraitIndexes = preferredIndexes(photoCount: photoCount,
+                                               count: displayOrientations.filter { $0 == .portrait }.count,
+                                               randomIndexInRange: randomIndexInRange) {
+            orientationAtIndex($0) == .portrait
+        }
+        let squareIndexes = randomIndexes(photoCount: photoCount,
+                                          count: displayOrientations.filter { $0 == .square }.count,
+                                          randomIndexInRange: randomIndexInRange)
+        var remainingIndexes: [WallpaperOrientation: [Int]] = [
+            .landscape: landscapeIndexes,
+            .portrait: portraitIndexes,
+            .square: squareIndexes
+        ]
+
+        return displayOrientations.compactMap { orientation in
+            guard var indexes = remainingIndexes[orientation], !indexes.isEmpty else { return nil }
+            let index = indexes.removeFirst()
+            remainingIndexes[orientation] = indexes
+            return index
+        }
     }
 
-    static func preferWideIndexes(photoCount: Int,
-                                  count: Int,
-                                  randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
-                                  isWide: (Int) -> Bool) -> [Int] {
-        preferOrientationIndexes(photoCount: photoCount,
-                                 count: count,
-                                 randomIndexInRange: randomIndexInRange,
-                                 isPreferredOrientation: isWide)
-    }
-
-    static func preferTallIndexes(photoCount: Int,
-                                  count: Int,
-                                  randomIndexInRange: (Range<Int>) -> Int = { Int.random(in: $0) },
-                                  isTall: (Int) -> Bool) -> [Int] {
-        preferOrientationIndexes(photoCount: photoCount,
-                                 count: count,
-                                 randomIndexInRange: randomIndexInRange,
-                                 isPreferredOrientation: isTall)
-    }
-
-    private static func preferOrientationIndexes(photoCount: Int,
-                                                 count: Int,
-                                                 randomIndexInRange: (Range<Int>) -> Int,
-                                                 isPreferredOrientation: (Int) -> Bool) -> [Int] {
-        guard photoCount > 0, count > 0 else { return [] }
+    private static func preferredIndexes(photoCount: Int,
+                                         count: Int,
+                                         randomIndexInRange: (Range<Int>) -> Int,
+                                         isPreferredOrientation: (Int) -> Bool) -> [Int] {
+        guard count > 0 else { return [] }
         let selectionCount = min(count, photoCount)
         let probeLimit = min(photoCount, max(Self.minimumPreferredOrientationProbeCount,
                                              selectionCount * Self.preferredOrientationProbeMultiplier))
         let selectedPreferredIndexes = randomPreferredOrientationIndexes(photoCount: photoCount,
-                                                                        count: selectionCount,
-                                                                        probeLimit: probeLimit,
-                                                                        randomIndexInRange: randomIndexInRange,
-                                                                        isPreferredOrientation: isPreferredOrientation)
-        guard selectedPreferredIndexes.count < selectionCount else { return selectedPreferredIndexes }
+                                                                          count: selectionCount,
+                                                                          probeLimit: probeLimit,
+                                                                          randomIndexInRange: randomIndexInRange,
+                                                                          isPreferredOrientation: isPreferredOrientation)
+        let selectedIndexes: [Int]
+        if selectedPreferredIndexes.count == selectionCount {
+            selectedIndexes = selectedPreferredIndexes
+        } else {
+            let fallbackIndexes = randomUniqueIndexes(photoCount: photoCount,
+                                                      count: selectionCount - selectedPreferredIndexes.count,
+                                                      excluding: Set(selectedPreferredIndexes),
+                                                      randomIndexInRange: randomIndexInRange)
+            selectedIndexes = selectedPreferredIndexes + fallbackIndexes
+        }
 
-        let fallbackIndexes = randomUniqueIndexes(photoCount: photoCount,
-                                                  count: selectionCount - selectedPreferredIndexes.count,
-                                                  excluding: Set(selectedPreferredIndexes),
+        guard let fallbackIndex = selectedIndexes.last, selectedIndexes.count < count else {
+            return selectedIndexes
+        }
+        return selectedIndexes + Array(repeating: fallbackIndex, count: count - selectedIndexes.count)
+    }
+
+    private static func randomIndexes(photoCount: Int,
+                                      count: Int,
+                                      randomIndexInRange: (Range<Int>) -> Int) -> [Int] {
+        guard count > 0 else { return [] }
+        let selectedIndexes = randomUniqueIndexes(photoCount: photoCount,
+                                                  count: min(count, photoCount),
+                                                  excluding: [],
                                                   randomIndexInRange: randomIndexInRange)
-        return selectedPreferredIndexes + fallbackIndexes
+        guard let fallbackIndex = selectedIndexes.last, selectedIndexes.count < count else {
+            return selectedIndexes
+        }
+        return selectedIndexes + Array(repeating: fallbackIndex, count: count - selectedIndexes.count)
     }
 
     private static func randomPreferredOrientationIndexes(photoCount: Int,
@@ -539,7 +563,6 @@ enum WallpaperPhotoSelector {
 ///   dependencies.
 @MainActor final class WallpaperCycleController: WallpaperCycleControlling {
     private static let defaultsKey = "cycleFrequency"
-    private static let wallpaperPhotoSelectionModeDefaultsKey = "wallpaperPhotoSelectionMode"
     private static let nextScheduledCycleDueAtDefaultsKey = "nextScheduledCycleDueAt"
     private static let lastHandledLoginSessionIdentifierDefaultsKey = "lastHandledLoginSessionIdentifier"
     private static let wakeCatchUpDelay: TimeInterval = 5 * 60
@@ -556,12 +579,6 @@ enum WallpaperPhotoSelector {
             }
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
             scheduleCycleTrigger()
-        }
-    }
-    @Published var wallpaperPhotoSelectionMode: WallpaperPhotoSelectionMode = .preferWidePhotos {
-        didSet {
-            guard hasLoadedInitialWallpaperPhotoSelectionMode else { return }
-            defaults.set(wallpaperPhotoSelectionMode.rawValue, forKey: Self.wallpaperPhotoSelectionModeDefaultsKey)
         }
     }
     @Published private(set) var isWaitingForPhotoAuthorization = false
@@ -588,7 +605,6 @@ enum WallpaperPhotoSelector {
     private var isCycleInProgress = false
     private var pendingImageRequests = 0
     private var hasLoadedInitialFrequency = false
-    private var hasLoadedInitialWallpaperPhotoSelectionMode = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
     private var isWaitingForSchedulePhotoAuthorization = false
     private var nextScheduledCycleDueAt: Date?
@@ -707,13 +723,6 @@ enum WallpaperPhotoSelector {
         } else {
             self.frequency = nil
         }
-        if let raw = defaults.string(forKey: Self.wallpaperPhotoSelectionModeDefaultsKey),
-           let mode = WallpaperPhotoSelectionMode(rawValue: raw) {
-            self.wallpaperPhotoSelectionMode = mode
-        } else {
-            self.wallpaperPhotoSelectionMode = .preferWidePhotos
-        }
-        hasLoadedInitialWallpaperPhotoSelectionMode = true
         photoManager.photoAuthorizationDidChange = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.handlePhotoAuthorizationDidChange()
@@ -1045,7 +1054,9 @@ enum WallpaperPhotoSelector {
             return
         }
         let assets: [PHAsset]
-        switch photoManager.getRandomPhotos(count: screens.count, selectionMode: wallpaperPhotoSelectionMode) {
+        let screenSizes = screens.map(\.pixelSize)
+        let screenOrientations = screenSizes.map(WallpaperOrientation.init(size:))
+        switch photoManager.getRandomPhotos(for: screenOrientations) {
         case .photos(let selectedAssets):
             isWaitingForPhotoAuthorization = false
             if selectedAssets.isEmpty {
@@ -1082,7 +1093,7 @@ enum WallpaperPhotoSelector {
         pendingImageRequests = screenAssetPairs.count
         for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
-            let size = screen.pixelSize
+            let size = screenSizes[index]
             let screenName = "Screen \(index + 1)"
             debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
             // The completion closure is marked `@escaping` in the protocol, which means Photos may
