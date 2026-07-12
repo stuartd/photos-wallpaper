@@ -173,7 +173,7 @@ struct photos_wallpaperApp: App {
 
             Divider()
 
-            Menu("Help") {
+            Menu("About & Support") {
                 Button("Contact Support…") {
                     prepareForUserInitiatedSurface()
                     documentOpener.openSupportPage()
