@@ -371,7 +371,7 @@ struct PhotosWallpaperTests {
         #expect(defaults.storage["cycleFrequency"] == nil)
     }
 
-    @Test func loadsSavedFrequencyAndSchedulesTimer() {
+    @Test func loadsSavedFrequencyPreflightsPhotoAccessAndSchedulesTimer() {
         let defaults = FakeDefaults()
         defaults.storage["cycleFrequency"] = CycleFrequency.fifteenMinutes.rawValue
         let scheduler = FakeTimerScheduler()
@@ -390,7 +390,55 @@ struct PhotosWallpaperTests {
         #expect(controller.frequency == .fifteenMinutes)
         let expectedIntervals: [TimeInterval] = [15 * 60]
         #expect(scheduler.scheduledIntervals == expectedIntervals)
-        #expect(photoManager.requestPhotoAccessCallCount == 0)
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+    }
+
+    @Test func savedFrequencyMarksControllerWaitingForPhotoAuthorizationOnLaunch() {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.day.rawValue
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        photoManager.photoAccessPreflightResult = .waitingForAuthorization
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: FakeWallpaperCycleNotifier(),
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        #expect(controller.frequency == .day)
+        #expect(controller.isWaitingForPhotoAuthorization)
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+        #expect(scheduler.scheduledIntervals == [24 * 60 * 60])
+    }
+
+    @Test func savedFrequencyPreservesScheduleAndNotifiesWhenPhotoAccessWasDeniedOnLaunch() {
+        let defaults = FakeDefaults()
+        defaults.storage["cycleFrequency"] = CycleFrequency.day.rawValue
+        let scheduler = FakeTimerScheduler()
+        let photoManager = FakePhotoManager()
+        photoManager.photoAccessPreflightResult = .permissionDenied
+        let notifier = FakeWallpaperCycleNotifier()
+
+        let controller = WallpaperCycleController(
+            photoManager: photoManager,
+            defaults: defaults,
+            historyLogger: FakeWallpaperHistoryLogger(),
+            notifier: notifier,
+            screenProvider: FakeScreenProvider(screens: []),
+            wakeEventObserver: FakeWakeEventObserver(),
+            timerScheduler: scheduler
+        )
+
+        #expect(controller.frequency == .day)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
+        #expect(photoManager.requestPhotoAccessCallCount == 1)
+        #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
+        #expect(scheduler.scheduledIntervals == [24 * 60 * 60])
     }
 
     @Test func newUserStartsWithNoScheduleAndDoesNotRequestPhotoAccess() {
@@ -477,14 +525,14 @@ struct PhotosWallpaperTests {
 
         #expect(photoManager.requestPhotoAccessCallCount == 1)
         #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
-        #expect(controller.frequency == nil)
-        #expect(defaults.string(forKey: "cycleFrequency") == nil)
-        #expect(scheduler.scheduledIntervals.isEmpty)
+        #expect(controller.frequency == .day)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
+        #expect(scheduler.scheduledIntervals == [24 * 60 * 60])
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }
 
-    @Test func denyingPhotoAccessWhileSelectingScheduledFrequencyResetsSchedule() async {
+    @Test func denyingPhotoAccessWhileSelectingScheduledFrequencyPreservesSchedule() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
         let photoManager = FakePhotoManager()
@@ -514,9 +562,9 @@ struct PhotosWallpaperTests {
         #expect(photoManager.requestPhotoAccessCallCount == 2)
         #expect(!controller.isWaitingForPhotoAuthorization)
         #expect(notifier.photoLibraryPermissionDeniedNotificationCount == 1)
-        #expect(controller.frequency == nil)
-        #expect(defaults.string(forKey: "cycleFrequency") == nil)
-        #expect(scheduler.createdTimers.first?.invalidateCallCount == 1)
+        #expect(controller.frequency == .day)
+        #expect(defaults.string(forKey: "cycleFrequency") == CycleFrequency.day.rawValue)
+        #expect(scheduler.createdTimers.first?.invalidateCallCount == 0)
         #expect(photoManager.getRandomPhotosCallCount == 0)
         #expect(photoManager.wallpaperAssignments.isEmpty)
     }

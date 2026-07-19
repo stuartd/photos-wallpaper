@@ -46,10 +46,29 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
             alert.messageText = "Photos Access Needed"
             alert.informativeText = "Photos Wallpaper does not have permission to read your Photos library.\n\nEnable access in System Settings > Privacy & Security > Photos, then try again."
             alert.alertStyle = .warning
+            alert.addButton(withTitle: "Open System Settings")
             alert.addButton(withTitle: "OK")
             NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                Self.openPhotosPrivacySettings()
+            }
         }
+    }
+
+    private static func openPhotosPrivacySettings() {
+        let photosSettingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Photos")
+        let privacySettingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy")
+
+        if let photosSettingsURL, NSWorkspace.shared.open(photosSettingsURL) {
+            return
+        }
+
+        if let privacySettingsURL, NSWorkspace.shared.open(privacySettingsURL) {
+            return
+        }
+
+        debugLog("UserNotificationWallpaperCycleNotifier: failed to open Photos privacy settings.")
     }
 
     private func queueNotification(identifier: String, title: String, body: String) {
@@ -775,7 +794,7 @@ enum WallpaperPhotoSelector {
             debugLog("WallpaperCycleController: no wallpaper schedule selected.")
             return
         }
-        if preflightsPhotoAccessWhenScheduling && !isConfiguringInitialSchedule {
+        if preflightsPhotoAccessWhenScheduling {
             switch photoManager.requestPhotoAccessIfNeeded() {
             case .ready:
                 isWaitingForSchedulePhotoAuthorization = false
@@ -787,9 +806,7 @@ enum WallpaperPhotoSelector {
                 isWaitingForSchedulePhotoAuthorization = false
                 isWaitingForPhotoAuthorization = false
                 debugLog("WallpaperCycleController: Photos permission denied while configuring schedule.")
-                notifier.notifyPhotoLibraryPermissionDenied()
-                clearScheduleAfterPhotoAccessDenied()
-                return
+                notifyPhotoLibraryPermissionDeniedForScheduleSetup()
             case .unavailable:
                 isWaitingForSchedulePhotoAuthorization = false
                 isWaitingForPhotoAuthorization = false
@@ -1300,11 +1317,10 @@ enum WallpaperPhotoSelector {
             let deniedTrigger = pendingAuthorizationRetryTrigger
             isWaitingForSchedulePhotoAuthorization = false
             pendingAuthorizationRetryTrigger = nil
-            clearScheduleAfterPhotoAccessDenied()
             if let deniedTrigger {
                 notifyUnavailablePhotos(reason: .permissionDenied, trigger: deniedTrigger)
             } else if wasWaitingForSchedulePhotoAuthorization {
-                notifier.notifyPhotoLibraryPermissionDenied()
+                notifyPhotoLibraryPermissionDeniedForScheduleSetup()
             }
         case .unavailable:
             let unavailableTrigger = pendingAuthorizationRetryTrigger
@@ -1316,10 +1332,9 @@ enum WallpaperPhotoSelector {
         }
     }
 
-    private func clearScheduleAfterPhotoAccessDenied() {
-        guard frequency != nil else { return }
-        debugLog("WallpaperCycleController: clearing wallpaper schedule because Photos access was denied.")
-        frequency = nil
+    private func notifyPhotoLibraryPermissionDeniedForScheduleSetup() {
+        lastAutomaticUnavailablePhotosReason = .permissionDenied
+        notifier.notifyPhotoLibraryPermissionDenied()
     }
 
     private enum UnavailablePhotosReason {
