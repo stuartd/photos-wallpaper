@@ -2165,6 +2165,76 @@ struct PhotosWallpaperTests {
         #expect(!controller.isPresentingAlert)
     }
 
+    @Test func appleScriptAlbumCommandIsRegisteredInTheAppBundle() {
+        let appBundle = Bundle(for: AddCurrentWallpaperToPhotosWallpaperAlbumCommand.self)
+
+        #expect(appBundle.object(forInfoDictionaryKey: "NSAppleScriptEnabled") as? Bool == true)
+        #expect(appBundle.object(forInfoDictionaryKey: "OSAScriptingDefinition") as? String == "PhotosWallpaper.sdef")
+        #expect(appBundle.url(forResource: "PhotosWallpaper", withExtension: "sdef") != nil)
+        #expect(NSClassFromString("AddCurrentWallpaperToPhotosWallpaperAlbumCommand") != nil)
+    }
+
+    @Test func appleScriptAlbumCommandReturnsAUsefulSuccessMessage() {
+        let response = AddCurrentWallpaperScriptResponse(
+            additionResult: .added(addedCount: 2,
+                                   alreadyInAlbumCount: 0,
+                                   missingIdentifierCount: 0,
+                                   failedAddCount: 0))
+
+        #expect(response.result == "Added both wallpaper photos to the Photos Wallpaper album.")
+        #expect(response.errorNumber == NSNoScriptError)
+        #expect(response.errorMessage == nil)
+    }
+
+    @Test func appleScriptAlbumCommandReportsPartialFailuresAsScriptErrors() {
+        let response = AddCurrentWallpaperScriptResponse(
+            additionResult: .added(addedCount: 1,
+                                   alreadyInAlbumCount: 0,
+                                   missingIdentifierCount: 1,
+                                   failedAddCount: 0))
+
+        #expect(response.result == nil)
+        #expect(response.errorNumber == NSInternalScriptError)
+        #expect(response.errorMessage == "Wallpaper Photo No Longer in Photos: Added the wallpaper photo to the Photos Wallpaper album. One wallpaper photo is no longer in Photos, so it could not be added.")
+    }
+
+    @Test func appleScriptCoordinatorRunsTheAlbumActionWithoutShowingAnAlert() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(
+            historyLogger: logger,
+            photoManager: photoManager) { title, message in
+                alerts.append((title, message))
+            }
+        let coordinator = AppleScriptCommandCoordinator()
+        coordinator.configure(currentWallpaperAlbumController: controller)
+        logger.recordWallpaperChange(
+            photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
+            screenName: "Screen 1",
+            screenCount: 1,
+            timestamp: Date(timeIntervalSince1970: 0))
+        var completedResult: CurrentWallpaperAlbumAdditionResult?
+
+        let didStart = coordinator.addCurrentWallpapersToPhotosWallpaperAlbum {
+            completedResult = $0
+        }
+        let didComplete = await waitForCondition {
+            completedResult != nil
+        }
+
+        #expect(didStart)
+        #expect(didComplete)
+        #expect(completedResult == .added(addedCount: 1,
+                                         alreadyInAlbumCount: 0,
+                                         missingIdentifierCount: 0,
+                                         failedAddCount: 0))
+        #expect(alerts.isEmpty)
+        #expect(photoManager.albumAddRequests.count == 1)
+    }
+
     private func currentWallpaperAlbumConfirmation(assetCount: Int,
                                                    albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
                                                    missingLookupIdentifiers: Set<String> = [],

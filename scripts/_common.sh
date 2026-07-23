@@ -95,3 +95,62 @@ else
 end if
 APPLESCRIPT
 }
+
+photos_wallpaper_album_item_count() {
+    if ! command -v osascript >/dev/null 2>&1; then
+        echo "Could not inspect the Photos Wallpaper album because osascript is unavailable." >&2
+        return 1
+    fi
+
+    osascript <<APPLESCRIPT
+tell application "Photos"
+    if exists album "${PHOTOS_WALLPAPER_ALBUM_NAME}" then
+        return count of media items of album "${PHOTOS_WALLPAPER_ALBUM_NAME}"
+    else
+        return 0
+    end if
+end tell
+APPLESCRIPT
+}
+
+require_photos_wallpaper_album_reset_permission() {
+    local force_reset="${1:-false}"
+    local item_count
+
+    if ! item_count="$(photos_wallpaper_album_item_count)"; then
+        if [[ "$force_reset" == true ]]; then
+            echo "Warning: could not inspect the Photos Wallpaper album; proceeding because -f was supplied." >&2
+            return 0
+        fi
+
+        echo "Refusing to reset first-run state because the Photos Wallpaper album could not be inspected." >&2
+        echo "Re-run with -f if deleting the album is intentional." >&2
+        return 1
+    fi
+
+    if [[ ! "$item_count" =~ ^[0-9]+$ ]]; then
+        if [[ "$force_reset" == true ]]; then
+            echo "Warning: Photos returned an unexpected album item count; proceeding because -f was supplied." >&2
+            return 0
+        fi
+
+        echo "Refusing to reset first-run state because Photos returned an unexpected album item count: $item_count" >&2
+        echo "Re-run with -f if deleting the album is intentional." >&2
+        return 1
+    fi
+
+    if ((item_count == 0)); then
+        echo "Photos Wallpaper album contains no photos."
+        return 0
+    fi
+
+    if [[ "$force_reset" == true ]]; then
+        echo "Warning: Photos Wallpaper album contains $item_count photo(s); proceeding because -f was supplied." >&2
+        return 0
+    fi
+
+    echo "Photos Wallpaper album contains $item_count photo(s)." >&2
+    echo "Refusing to reset first-run state because that would delete the album." >&2
+    echo "Re-run with -f if deleting the album is intentional." >&2
+    return 1
+}

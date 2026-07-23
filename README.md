@@ -36,7 +36,21 @@ The project is also a case study in directing agentic AI to design, implement, t
 - Handles wake, unlock, and inactive user-session cases
 - Logs local wallpaper history and runtime diagnostics
 - Can add the current wallpaper photo or photos to a "Photos Wallpaper" album
+- Provides an AppleScript command for adding the current wallpaper photo or photos to that album
 - Includes a local privacy document explaining what data is read and written
+
+The 'add to photos wallpaper album' action can also be automated:
+
+```applescript
+tell application "Photos Wallpaper"
+    add current wallpaper to photos wallpaper album
+end tell
+```
+
+And
+```
+osascript -e 'tell application "Photos Wallpaper" to add current wallpaper to photos wallpaper album'
+```
 
 ## Privacy
 
@@ -87,7 +101,15 @@ xcodebuild test \
 
 To create a release binary:
 ```bash
-scripts/create-local-release.sh 
+scripts/create-local-release.sh
+```
+
+This local release smoke test resets first-run state before opening the app. It
+refuses to continue if the Photos Wallpaper album contains photos. Pass `-f`
+only when deleting that album is intentional:
+
+```bash
+scripts/create-local-release.sh -f
 ```
 
 ## Notes

@@ -26,7 +26,11 @@
 	<true/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs Photos access so it can select images for wallpaper and add current wallpaper photos to the Photos Wallpaper album when you ask it to.</string>
+	<key>OSAScriptingDefinition</key>
+	<string>PhotosWallpaper.sdef</string>
 </dict>
 </plist>

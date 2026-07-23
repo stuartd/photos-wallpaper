@@ -10,6 +10,121 @@ enum CurrentWallpaperAlbumAdditionResult: Equatable {
     case unavailable
 }
 
+struct CurrentWallpaperAlbumResultPresentation: Equatable {
+    let title: String
+    let message: String
+
+    var combinedMessage: String {
+        message.isEmpty ? title : "\(title): \(message)"
+    }
+}
+
+enum CurrentWallpaperAlbumResultPresenter {
+    static func presentation(for result: CurrentWallpaperAlbumAdditionResult) -> CurrentWallpaperAlbumResultPresentation {
+        switch result {
+        case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
+            let summary = albumSummary(addedCount: addedCount,
+                                       alreadyInAlbumCount: alreadyInAlbumCount,
+                                       missingIdentifierCount: missingIdentifierCount,
+                                       failedAddCount: failedAddCount)
+            guard missingIdentifierCount > 0 || failedAddCount > 0 else {
+                return CurrentWallpaperAlbumResultPresentation(title: summary, message: "")
+            }
+            return CurrentWallpaperAlbumResultPresentation(
+                title: albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
+                                         failedAddCount: failedAddCount),
+                message: summary)
+        case .noRememberedWallpapers:
+            return CurrentWallpaperAlbumResultPresentation(
+                title: "No Current Wallpapers Yet",
+                message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
+        case .waitingForAuthorization:
+            return CurrentWallpaperAlbumResultPresentation(
+                title: "Photos Access Needed",
+                message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
+        case .permissionDenied:
+            return CurrentWallpaperAlbumResultPresentation(
+                title: "Photos Access Needed",
+                message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
+        case .unavailable:
+            return CurrentWallpaperAlbumResultPresentation(
+                title: "Photos Unavailable",
+                message: "Photos Wallpaper could not search your Photos library right now.")
+        }
+    }
+
+    private static func albumSummary(addedCount: Int,
+                                     alreadyInAlbumCount: Int,
+                                     missingIdentifierCount: Int,
+                                     failedAddCount: Int) -> String {
+        var parts: [String] = []
+        if addedCount > 0 {
+            parts.append(albumSuccessMessage(addedCount: addedCount))
+        }
+        if alreadyInAlbumCount > 0 {
+            parts.append(albumAlreadyInAlbumMessage(alreadyInAlbumCount: alreadyInAlbumCount))
+        }
+        if missingIdentifierCount > 0 {
+            parts.append(missingPhotosMessage(missingIdentifierCount: missingIdentifierCount))
+        }
+        if failedAddCount > 0 {
+            parts.append("\(failedAddCount) wallpaper photo\(failedAddCount == 1 ? "" : "s") could not be added.")
+        }
+        if parts.isEmpty {
+            parts.append("No wallpaper photos were added to the Photos Wallpaper album.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func albumSuccessMessage(addedCount: Int) -> String {
+        switch addedCount {
+        case 1:
+            return "Added the wallpaper photo to the Photos Wallpaper album."
+        case 2:
+            return "Added both wallpaper photos to the Photos Wallpaper album."
+        default:
+            return "Added all wallpaper photos to the Photos Wallpaper album."
+        }
+    }
+
+    private static func albumAlreadyInAlbumMessage(alreadyInAlbumCount: Int) -> String {
+        switch alreadyInAlbumCount {
+        case 1:
+            return "The wallpaper photo was already in the Photos Wallpaper album."
+        case 2:
+            return "Both wallpaper photos were already in the Photos Wallpaper album."
+        default:
+            return "\(alreadyInAlbumCount) wallpaper photos were already in the Photos Wallpaper album."
+        }
+    }
+
+    private static func missingPhotosMessage(missingIdentifierCount: Int) -> String {
+        switch missingIdentifierCount {
+        case 1:
+            return "One wallpaper photo is no longer in Photos, so it could not be added."
+        default:
+            return "\(missingIdentifierCount) wallpaper photos are no longer in Photos, so they could not be added."
+        }
+    }
+
+    private static func albumFailureTitle(missingIdentifierCount: Int, failedAddCount: Int) -> String {
+        if failedAddCount == 0 {
+            switch missingIdentifierCount {
+            case 1:
+                return "Wallpaper Photo No Longer in Photos"
+            default:
+                return "Wallpaper Photos No Longer in Photos"
+            }
+        }
+
+        if missingIdentifierCount == 0, failedAddCount == 1 {
+            return "Wallpaper Photo Could Not Be Added"
+        }
+
+        return "Some Wallpaper Photos Could Not Be Added"
+    }
+}
+
 struct CurrentWallpaperAlbumAdder {
     let photoManager: PhotoManaging
 
@@ -133,120 +248,34 @@ struct CurrentWallpaperAlbumAdder {
         self.showAlert = showAlert
     }
 
-    func addCurrentWallpapersToAlbum() {
+    func addCurrentWallpapersToAlbum(
+        showsResultAlert: Bool = true,
+        completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)? = nil
+    ) {
         let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
         CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
-            guard let self else { return }
             Task { @MainActor in
-                self.handle(result)
+                guard let self else {
+                    completion?(.unavailable)
+                    return
+                }
+                if showsResultAlert {
+                    self.handle(result)
+                }
+                completion?(result)
             }
         }
     }
 
     private func handle(_ result: CurrentWallpaperAlbumAdditionResult) {
-        switch result {
-        case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
-            if missingIdentifierCount == 0, failedAddCount == 0 {
-                presentAlert(title: albumSummary(addedCount: addedCount,
-                                                 alreadyInAlbumCount: alreadyInAlbumCount,
-                                                 missingIdentifierCount: missingIdentifierCount,
-                                                 failedAddCount: failedAddCount),
-                             message: "")
-                return
-            }
-            presentAlert(title: albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
-                                                  failedAddCount: failedAddCount),
-                         message: albumSummary(addedCount: addedCount,
-                                               alreadyInAlbumCount: alreadyInAlbumCount,
-                                               missingIdentifierCount: missingIdentifierCount,
-                                               failedAddCount: failedAddCount))
-        case .noRememberedWallpapers:
-            presentAlert(title: "No Current Wallpapers Yet",
-                         message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
-        case .waitingForAuthorization:
-            presentAlert(title: "Photos Access Needed",
-                         message: "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access.")
-        case .permissionDenied:
-            presentAlert(title: "Photos Access Needed",
-                         message: "Enable Photos access in System Settings > Privacy & Security > Photos, then try again.")
-        case .unavailable:
-            presentAlert(title: "Photos Unavailable",
-                         message: "Photos Wallpaper could not search your Photos library right now.")
-        }
+        let presentation = CurrentWallpaperAlbumResultPresenter.presentation(for: result)
+        presentAlert(title: presentation.title, message: presentation.message)
     }
 
     private func presentAlert(title: String, message: String) {
         isPresentingAlert = true
         defer { isPresentingAlert = false }
         showAlert(title, message)
-    }
-
-    private func albumSummary(addedCount: Int, alreadyInAlbumCount: Int, missingIdentifierCount: Int, failedAddCount: Int) -> String {
-        var parts: [String] = []
-        if addedCount > 0 {
-            parts.append(albumSuccessMessage(addedCount: addedCount))
-        }
-        if alreadyInAlbumCount > 0 {
-            parts.append(albumAlreadyInAlbumMessage(alreadyInAlbumCount: alreadyInAlbumCount))
-        }
-        if missingIdentifierCount > 0 {
-            parts.append(missingPhotosMessage(missingIdentifierCount: missingIdentifierCount))
-        }
-        if failedAddCount > 0 {
-            parts.append("\(failedAddCount) wallpaper photo\(failedAddCount == 1 ? "" : "s") could not be added.")
-        }
-        if parts.isEmpty {
-            parts.append("No wallpaper photos were added to the Photos Wallpaper album.")
-        }
-        return parts.joined(separator: " ")
-    }
-
-    private func albumSuccessMessage(addedCount: Int) -> String {
-        switch addedCount {
-        case 1:
-            return "Added the wallpaper photo to the Photos Wallpaper album."
-        case 2:
-            return "Added both wallpaper photos to the Photos Wallpaper album."
-        default:
-            return "Added all wallpaper photos to the Photos Wallpaper album."
-        }
-    }
-
-    private func albumAlreadyInAlbumMessage(alreadyInAlbumCount: Int) -> String {
-        switch alreadyInAlbumCount {
-        case 1:
-            return "The wallpaper photo was already in the Photos Wallpaper album."
-        case 2:
-            return "Both wallpaper photos were already in the Photos Wallpaper album."
-        default:
-            return "\(alreadyInAlbumCount) wallpaper photos were already in the Photos Wallpaper album."
-        }
-    }
-
-    private func missingPhotosMessage(missingIdentifierCount: Int) -> String {
-        switch missingIdentifierCount {
-        case 1:
-            return "One wallpaper photo is no longer in Photos, so it could not be added."
-        default:
-            return "\(missingIdentifierCount) wallpaper photos are no longer in Photos, so they could not be added."
-        }
-    }
-
-    private func albumFailureTitle(missingIdentifierCount: Int, failedAddCount: Int) -> String {
-        if failedAddCount == 0 {
-            switch missingIdentifierCount {
-            case 1:
-                return "Wallpaper Photo No Longer in Photos"
-            default:
-                return "Wallpaper Photos No Longer in Photos"
-            }
-        }
-
-        if missingIdentifierCount == 0, failedAddCount == 1 {
-            return "Wallpaper Photo Could Not Be Added"
-        }
-
-        return "Some Wallpaper Photos Could Not Be Added"
     }
 
     private static func runModalAlert(title: String, message: String) {

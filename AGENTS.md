@@ -53,7 +53,7 @@ scripts/create-local-release.sh
 - `scripts/show-saved-data.sh`: read-only diagnostics for saved defaults, app support files, history log, runtime log, Photos permission guidance, and login-item guidance.
 - `scripts/app_monitor.sh`: read-only app support and generated wallpaper cache size check.
 - `scripts/reset-first-run.sh`: state-reset helper. It deletes matching defaults, local app support logs/cache/history, the Photos Wallpaper album, and Photos permission state. Run only when a reset is intentional.
-- `scripts/create-local-release.sh`: local release smoke-test helper. It builds a local app/DMG, resets first-run state, and opens the built app.
+- `scripts/create-local-release.sh`: local release smoke-test helper. It builds a local app/DMG, checks that the Photos Wallpaper album is empty, resets first-run state, and opens the built app. It refuses to delete an album containing photos unless `-f` is passed.
 - `scripts/expire-testflight-builds.sh`: App Store Connect maintenance helper. It is dry-run by default, needs App Store Connect API credentials, and only expires builds when `--apply` is passed.
 - `scripts/_common.sh`: shared script constants and helpers. Keep bundle IDs, app support paths, app names, and album names aligned with app behavior.
 - `scripts/_create-local.sh`, `scripts/_create-dmg.sh`, and `scripts/_delete-photos-wallpaper-album.sh`: private helpers used by public scripts. Prefer invoking the public scripts unless working on the helper itself.

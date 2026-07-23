@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary>
+    <suite name="Photos Wallpaper Suite" code="PWal" description="Commands for Photos Wallpaper.">
+        <command name="add current wallpaper to photos wallpaper album"
+                 code="PWaladdw"
+                 description="Add the current wallpaper photo or photos to the Photos Wallpaper album.">
+            <cocoa class="AddCurrentWallpaperToPhotosWallpaperAlbumCommand"/>
+            <result type="text" description="A summary of the album update."/>
+        </command>
+    </suite>
+</dictionary>

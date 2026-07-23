@@ -114,10 +114,13 @@ struct photos_wallpaperApp: App {
 
         let firstRunStartupController = FirstRunStartupController()
         let historyLogger = WallpaperHistoryLogger()
+        let currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
         self.historyLogger = historyLogger
-        _currentWallpaperAlbumController = StateObject(wrappedValue: CurrentWallpaperAlbumController(historyLogger: historyLogger))
+        _currentWallpaperAlbumController = StateObject(wrappedValue: currentWallpaperAlbumController)
         _cycleController = StateObject(wrappedValue: WallpaperCycleController(historyLogger: historyLogger))
+        AppleScriptCommandCoordinator.shared.configure(
+            currentWallpaperAlbumController: currentWallpaperAlbumController)
         firstRunStartupController.scheduleWelcomeIfNeeded()
     }
 
