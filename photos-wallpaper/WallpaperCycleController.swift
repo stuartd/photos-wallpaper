@@ -742,7 +742,7 @@ enum WallpaperPhotoSelector {
         } else {
             self.frequency = nil
         }
-        photoManager.photoAuthorizationDidChange = { [weak self] in
+        photoManager.addPhotoAuthorizationChangeHandler { [weak self] in
             Task { @MainActor [weak self] in
                 self?.handlePhotoAuthorizationDidChange()
             }

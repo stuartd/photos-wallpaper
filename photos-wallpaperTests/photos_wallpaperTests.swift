@@ -556,7 +556,7 @@ struct PhotosWallpaperTests {
         #expect(scheduler.scheduledIntervals == expectedIntervals)
 
         photoManager.photoAccessPreflightResult = .permissionDenied
-        photoManager.photoAuthorizationDidChange?()
+        photoManager.notifyPhotoAuthorizationDidChange()
         await Task.yield()
 
         #expect(photoManager.requestPhotoAccessCallCount == 2)
@@ -1135,7 +1135,7 @@ struct PhotosWallpaperTests {
         #expect(controller.isWaitingForPhotoAuthorization)
 
         photoManager.photoSelectionOverride = nil
-        photoManager.photoAuthorizationDidChange?()
+        photoManager.notifyPhotoAuthorizationDidChange()
         let didAssignWallpaper = await photoManager.waitForWallpaperAssignmentCount(1)
 
         #expect(didAssignWallpaper)
@@ -2159,6 +2159,48 @@ struct PhotosWallpaperTests {
         #expect(result.alerts.first?.message == "One wallpaper photo is no longer in Photos, so it could not be added.")
     }
 
+    @Test func currentWallpaperAlbumControllerRetriesAfterPhotosAuthorizationIsGranted() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.photoLookupOverride = .waitingForAuthorization
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(
+            historyLogger: logger,
+            photoManager: photoManager) { title, message in
+                alerts.append((title, message))
+            }
+        logger.recordWallpaperChange(
+            photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
+            screenName: "Screen 1",
+            screenCount: 1,
+            timestamp: Date(timeIntervalSince1970: 0))
+
+        controller.addCurrentWallpapersToAlbum()
+        let didStartWaiting = await waitForCondition {
+            controller.isWaitingForAuthorization
+        }
+
+        #expect(didStartWaiting)
+        #expect(alerts.isEmpty)
+        #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"]])
+        #expect(photoManager.albumAddRequests.isEmpty)
+
+        photoManager.photoLookupOverride = nil
+        photoManager.notifyPhotoAuthorizationDidChange()
+        let didShowConfirmation = await waitForCondition {
+            !alerts.isEmpty
+        }
+
+        #expect(didShowConfirmation)
+        #expect(!controller.isWaitingForAuthorization)
+        #expect(alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album.")
+        #expect(alerts.first?.message == "")
+        #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"], ["ID-1/L0/001"]])
+        #expect(photoManager.albumAddRequests.count == 1)
+    }
+
     @Test func currentWallpaperAlbumControllerTracksAlertWhileConfirmationIsPresented() async {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
@@ -2346,7 +2388,7 @@ private final class FakePhotoManager: PhotoManaging {
     var photoSelectionOverride: PhotoSelectionResult?
     var photoAccessPreflightResult: PhotoAccessPreflightResult = .ready
     private var pendingImageCompletions: [(NSImage?) -> Void] = []
-    var photoAuthorizationDidChange: (() -> Void)?
+    private var photoAuthorizationChangeHandlers: [() -> Void] = []
     private(set) var getRandomPhotosCallCount = 0
     private(set) var requestPhotoAccessCallCount = 0
     private(set) var requestedPhotoCount = 0
@@ -2381,6 +2423,14 @@ private final class FakePhotoManager: PhotoManaging {
         } else {
             self.assetOrientations = [:]
         }
+    }
+
+    func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void) {
+        photoAuthorizationChangeHandlers.append(handler)
+    }
+
+    func notifyPhotoAuthorizationDidChange() {
+        photoAuthorizationChangeHandlers.forEach { $0() }
     }
 
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult {

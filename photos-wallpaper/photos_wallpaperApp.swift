@@ -220,7 +220,9 @@ struct photos_wallpaperApp: App {
     }
 
     private var isMenuInteractionDisabled: Bool {
-        isAboutPanelOpen || currentWallpaperAlbumController.isPresentingAlert
+        isAboutPanelOpen
+            || currentWallpaperAlbumController.isPresentingAlert
+            || currentWallpaperAlbumController.isWaitingForAuthorization
     }
 
     private var frequencyBinding: Binding<CycleFrequency?> {

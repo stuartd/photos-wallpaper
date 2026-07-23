@@ -51,8 +51,7 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
 }
 
 protocol PhotoManaging: AnyObject {
-    var photoAuthorizationDidChange: (() -> Void)? { get set }
-
+    func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void)
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
     func displayName(for asset: PHAsset) -> String
@@ -81,10 +80,14 @@ final class PhotoManager: PhotoManaging {
     private var allPhotos: PHFetchResult<PHAsset>?
     private var hasRequestedPhotoAccess = false
     private var activeWallpaperFilenamesByScreen = [String: String]()
-    var photoAuthorizationDidChange: (() -> Void)?
+    private var photoAuthorizationChangeHandlers: [() -> Void] = []
 
     init(wallpaperManager: WallpaperManaging = WallpaperManager()) {
         self.wallpaperManager = wallpaperManager
+    }
+
+    func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void) {
+        photoAuthorizationChangeHandlers.append(handler)
     }
 
     /// Returns one asset per connected display, preferring each display's visible orientation from
@@ -433,7 +436,7 @@ final class PhotoManager: PhotoManaging {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
             DispatchQueue.main.async { [weak self] in
-                self?.photoAuthorizationDidChange?()
+                self?.photoAuthorizationChangeHandlers.forEach { $0() }
             }
         }
         return .waitingForAuthorization

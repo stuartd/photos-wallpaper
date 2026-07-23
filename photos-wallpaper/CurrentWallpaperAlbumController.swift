@@ -234,10 +234,18 @@ struct CurrentWallpaperAlbumAdder {
 
 @MainActor final class CurrentWallpaperAlbumController: ObservableObject {
     @Published private(set) var isPresentingAlert = false
+    @Published private(set) var isWaitingForAuthorization = false
 
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
     private let showAlert: @MainActor (String, String) -> Void
+    private var pendingAuthorizationRequests: [PendingAuthorizationRequest] = []
+
+    private struct PendingAuthorizationRequest {
+        let identifiers: [String]
+        let showsResultAlert: Bool
+        let completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)?
+    }
 
     convenience init(historyLogger: WallpaperHistoryLogger) {
         self.init(historyLogger: historyLogger,
@@ -251,6 +259,11 @@ struct CurrentWallpaperAlbumAdder {
         self.historyLogger = historyLogger
         self.photoManager = photoManager
         self.showAlert = showAlert
+        photoManager.addPhotoAuthorizationChangeHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.retryPendingAuthorizationRequests()
+            }
+        }
     }
 
     func addCurrentWallpapersToAlbum(
@@ -288,11 +301,34 @@ struct CurrentWallpaperAlbumAdder {
                     completion?(.unavailable)
                     return
                 }
+                guard result != .waitingForAuthorization else {
+                    self.pendingAuthorizationRequests.append(
+                        PendingAuthorizationRequest(identifiers: identifiers,
+                                                    showsResultAlert: showsResultAlert,
+                                                    completion: completion))
+                    self.isWaitingForAuthorization = true
+                    debugLog("CurrentWallpaperAlbumController: waiting for Photos authorization before retrying album request.")
+                    return
+                }
                 if showsResultAlert {
                     self.handle(result)
                 }
                 completion?(result)
             }
+        }
+    }
+
+    private func retryPendingAuthorizationRequests() {
+        let requests = pendingAuthorizationRequests
+        pendingAuthorizationRequests.removeAll()
+        isWaitingForAuthorization = false
+        guard !requests.isEmpty else { return }
+
+        debugLog("CurrentWallpaperAlbumController: retrying \(requests.count) album request(s) after Photos authorization changed.")
+        for request in requests {
+            addWallpapersToAlbum(withLocalIdentifiers: request.identifiers,
+                                showsResultAlert: request.showsResultAlert,
+                                completion: request.completion)
         }
     }
 
