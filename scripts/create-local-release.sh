@@ -61,7 +61,13 @@ echo "Building local Photos Wallpaper app..."
 
 echo
 echo "Checking Photos Wallpaper album..."
-require_photos_wallpaper_album_reset_permission "$FORCE_RESET"
+if ! require_photos_wallpaper_album_reset_permission "$FORCE_RESET"; then
+    echo
+    echo "The app was built, but first-run state was not reset."
+    echo "To open the built app without deleting the Photos Wallpaper album, run:"
+    printf 'open %q\n' "$OUTPUT_APP"
+    exit 1
+fi
 
 echo
 echo "Resetting first-run state..."
