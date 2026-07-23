@@ -443,6 +443,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private let fileManager: FileManager
     private let dateFormatter: DateFormatter
     private var currentWallpaperIdentifiersByScreen = [String: String]()
+    private var currentSessionWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
     private let historyWindow = PlainTextLogWindow(title: "Photos Wallpaper History")
 
@@ -493,15 +494,13 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
 
     func currentWallpaperIdentifiersSnapshot() -> [String] {
         writeQueue.sync {
-            var seenIdentifiers = Set<String>()
-            var identifiers: [String] = []
-            for screenName in currentWallpaperIdentifiersByScreen.keys.sorted(by: screenSortOrder) {
-                guard let identifier = currentWallpaperIdentifiersByScreen[screenName],
-                      !seenIdentifiers.contains(identifier) else { continue }
-                identifiers.append(identifier)
-                seenIdentifiers.insert(identifier)
-            }
-            return identifiers
+            identifiersSnapshot(from: currentWallpaperIdentifiersByScreen)
+        }
+    }
+
+    func currentSessionWallpaperIdentifiersSnapshot() -> [String] {
+        writeQueue.sync {
+            identifiersSnapshot(from: currentSessionWallpaperIdentifiersByScreen)
         }
     }
 
@@ -515,8 +514,25 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             guard let screenNumber = Self.screenNumber(in: screenName) else { return true }
             return screenNumber <= screenCount
         }
+        currentSessionWallpaperIdentifiersByScreen = currentSessionWallpaperIdentifiersByScreen.filter { screenName, _ in
+            guard let screenNumber = Self.screenNumber(in: screenName) else { return true }
+            return screenNumber <= screenCount
+        }
         currentWallpaperIdentifiersByScreen[screenName] = identifier
+        currentSessionWallpaperIdentifiersByScreen[screenName] = identifier
         persistCurrentWallpapers()
+    }
+
+    private func identifiersSnapshot(from identifiersByScreen: [String: String]) -> [String] {
+        var seenIdentifiers = Set<String>()
+        var identifiers: [String] = []
+        for screenName in identifiersByScreen.keys.sorted(by: screenSortOrder) {
+            guard let identifier = identifiersByScreen[screenName],
+                  !seenIdentifiers.contains(identifier) else { continue }
+            identifiers.append(identifier)
+            seenIdentifiers.insert(identifier)
+        }
+        return identifiers
     }
 
     private func screenSortOrder(_ lhs: String, _ rhs: String) -> Bool {

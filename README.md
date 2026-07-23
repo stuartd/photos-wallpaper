@@ -52,6 +52,9 @@ And
 osascript -e 'tell application "Photos Wallpaper" to add current wallpaper to photos wallpaper album'
 ```
 
+The AppleScript command requires Photos Wallpaper to have set the wallpaper at
+least once during the current app session.
+
 ## Privacy
 
 Photos Wallpaper works locally on the user's Mac.

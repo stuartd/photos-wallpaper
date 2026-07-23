@@ -15,9 +15,7 @@ final class AppleScriptCommandCoordinator {
         completion: @escaping @MainActor (CurrentWallpaperAlbumAdditionResult) -> Void
     ) -> Bool {
         guard let currentWallpaperAlbumController else { return false }
-        currentWallpaperAlbumController.addCurrentWallpapersToAlbum(
-            showsResultAlert: false,
-            completion: completion)
+        currentWallpaperAlbumController.addCurrentSessionWallpapersToAlbum(completion: completion)
         return true
     }
 }
@@ -32,6 +30,10 @@ struct AddCurrentWallpaperScriptResponse: Equatable {
         switch additionResult {
         case .added(_, _, let missingIdentifierCount, let failedAddCount)
             where missingIdentifierCount == 0 && failedAddCount == 0:
+            result = presentation.combinedMessage
+            errorNumber = NSNoScriptError
+            errorMessage = nil
+        case .noWallpaperSetThisSession:
             result = presentation.combinedMessage
             errorNumber = NSNoScriptError
             errorMessage = nil

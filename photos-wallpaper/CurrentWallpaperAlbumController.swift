@@ -5,6 +5,7 @@ import Photos
 enum CurrentWallpaperAlbumAdditionResult: Equatable {
     case added(addedCount: Int, alreadyInAlbumCount: Int, missingIdentifierCount: Int, failedAddCount: Int)
     case noRememberedWallpapers
+    case noWallpaperSetThisSession
     case waitingForAuthorization
     case permissionDenied
     case unavailable
@@ -38,6 +39,10 @@ enum CurrentWallpaperAlbumResultPresenter {
             return CurrentWallpaperAlbumResultPresentation(
                 title: "No Current Wallpapers Yet",
                 message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
+        case .noWallpaperSetThisSession:
+            return CurrentWallpaperAlbumResultPresentation(
+                title: "No Wallpaper Set This Session",
+                message: "Photos Wallpaper can’t run this script until it has set the wallpaper at least once since startup.")
         case .waitingForAuthorization:
             return CurrentWallpaperAlbumResultPresentation(
                 title: "Photos Access Needed",
@@ -253,6 +258,30 @@ struct CurrentWallpaperAlbumAdder {
         completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)? = nil
     ) {
         let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
+        addWallpapersToAlbum(withLocalIdentifiers: identifiers,
+                            showsResultAlert: showsResultAlert,
+                            completion: completion)
+    }
+
+    func addCurrentSessionWallpapersToAlbum(
+        completion: @escaping @MainActor (CurrentWallpaperAlbumAdditionResult) -> Void
+    ) {
+        let identifiers = historyLogger.currentSessionWallpaperIdentifiersSnapshot()
+        guard !identifiers.isEmpty else {
+            completion(.noWallpaperSetThisSession)
+            return
+        }
+
+        addWallpapersToAlbum(withLocalIdentifiers: identifiers,
+                            showsResultAlert: false,
+                            completion: completion)
+    }
+
+    private func addWallpapersToAlbum(
+        withLocalIdentifiers identifiers: [String],
+        showsResultAlert: Bool,
+        completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)?
+    ) {
         CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
             Task { @MainActor in
                 guard let self else {
