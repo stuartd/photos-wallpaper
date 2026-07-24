@@ -141,6 +141,12 @@ struct photos_wallpaperApp: App {
 
     var body: some Scene {
         MenuBarExtra("Photos Wallpaper", systemImage: "photo") {
+            Button("Change Wallpaper Now") {
+                prepareForUserInitiatedSurface()
+                cycleController.triggerNow()
+            }
+            .disabled(isMenuInteractionDisabled)
+
             Picker("Set Schedule", selection: frequencyBinding) {
                 Text("No Schedule").tag(Optional<CycleFrequency>.none)
                 ForEach(CycleFrequency.allCases) { freq in
@@ -159,24 +165,20 @@ struct photos_wallpaperApp: App {
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
 
-            Button("Change Wallpaper Now") {
-                prepareForUserInitiatedSurface()
-                cycleController.triggerNow()
-            }
-            .disabled(isMenuInteractionDisabled)
-
             Button("Add Current Wallpaper to Photos Wallpaper Album") {
                 prepareForUserInitiatedSurface()
                 currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }
             .disabled(isMenuInteractionDisabled)
 
+            Divider()
+
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isMenuInteractionDisabled)
 
             Divider()
 
-            Menu("About & Support") {
+            Menu("Help") {
                 Button("Contact Support…") {
                     prepareForUserInitiatedSurface()
                     documentOpener.openSupportPage()
@@ -187,32 +189,31 @@ struct photos_wallpaperApp: App {
                     documentOpener.openPrivacyDocument()
                 }
 
-                Menu("Logs") {
-                    Button("Show Wallpaper History") {
-                        prepareForUserInitiatedSurface()
-                        historyLogger.openHistoryLog()
-                    }
-
-                    Button("Show Runtime Log") {
-                        prepareForUserInitiatedSurface()
-                        runtimeLogger.openRuntimeLog()
-                    }
-                }
-
                 Divider()
 
-                Button("About Photos Wallpaper") {
+                Button("Show Wallpaper History") {
                     prepareForUserInitiatedSurface()
-                    isAboutPanelOpen = true
-                    defer { isAboutPanelOpen = false }
-                    documentOpener.openAboutPanel()
+                    historyLogger.openHistoryLog()
                 }
+
+                Button("Show Runtime Log") {
+                    prepareForUserInitiatedSurface()
+                    runtimeLogger.openRuntimeLog()
+                }
+            }
+            .disabled(isMenuInteractionDisabled)
+
+            Button("About Photos Wallpaper") {
+                prepareForUserInitiatedSurface()
+                isAboutPanelOpen = true
+                defer { isAboutPanelOpen = false }
+                documentOpener.openAboutPanel()
             }
             .disabled(isMenuInteractionDisabled)
 
             Divider()
 
-            Button("Quit") {
+            Button("Quit Photos Wallpaper") {
                 NSApplication.shared.terminate(nil)
             }
             .disabled(isMenuInteractionDisabled)
