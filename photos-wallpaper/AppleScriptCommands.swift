@@ -51,23 +51,38 @@ final class AddCurrentWallpaperToPhotosWallpaperAlbumCommand: NSScriptCommand {
         debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: received AppleScript album request.")
         suspendExecution()
 
-        let didStart = AppleScriptCommandCoordinator.shared.addCurrentWallpapersToPhotosWallpaperAlbum { [weak self] result in
-            guard let self else { return }
+        let didStart = AppleScriptCommandCoordinator.shared.addCurrentWallpapersToPhotosWallpaperAlbum { [self] result in
             debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album request completed with \(result).")
             let response = AddCurrentWallpaperScriptResponse(additionResult: result)
-            self.scriptErrorNumber = response.errorNumber
-            self.scriptErrorString = response.errorMessage
-            self.resumeExecution(withResult: response.result)
+            resumeExecutionOnNextMainQueueTurn(
+                withResult: response.result,
+                errorNumber: response.errorNumber,
+                errorMessage: response.errorMessage)
         }
 
         guard didStart else {
             debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album controller was not ready.")
-            scriptErrorNumber = NSInternalScriptError
-            scriptErrorString = "Photos Wallpaper is not ready to add the current wallpaper."
-            resumeExecution(withResult: nil)
+            resumeExecutionOnNextMainQueueTurn(
+                withResult: nil,
+                errorNumber: NSInternalScriptError,
+                errorMessage: "Photos Wallpaper is not ready to add the current wallpaper.")
             return nil
         }
 
         return nil
+    }
+
+    private func resumeExecutionOnNextMainQueueTurn(
+        withResult result: Any?,
+        errorNumber: Int,
+        errorMessage: String?
+    ) {
+        // Cocoa scripting requires the command handler to return before a suspended command is
+        // resumed. Some album-result paths complete synchronously, so always defer the reply.
+        DispatchQueue.main.async { [self] in
+            scriptErrorNumber = errorNumber
+            scriptErrorString = errorMessage
+            resumeExecution(withResult: result)
+        }
     }
 }
