@@ -164,6 +164,8 @@ struct photos_wallpaperApp: App {
                 guard pendingStartAtLoginPromptFrequency != nil else { return }
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
+            
+            Divider()
 
             Button("Add Current Wallpaper to Photos Wallpaper Album") {
                 prepareForUserInitiatedSurface()
