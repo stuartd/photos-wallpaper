@@ -96,6 +96,8 @@ final class FirstRunStartupController: ObservableObject {
 /// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
 ///   the UI.
 struct photos_wallpaperApp: App {
+    static let findCurrentWallpaperMenuTitle = "Find Current Wallpaper in Photos…"
+
     /// Retains the POSIX lock for the app lifetime.
     private let singleInstanceLock: SingleInstanceLock?
     @StateObject private var firstRunStartupController: FirstRunStartupController
@@ -167,7 +169,7 @@ struct photos_wallpaperApp: App {
             
             Divider()
 
-            Button("Add Current Wallpaper to Photos Wallpaper Album") {
+            Button(Self.findCurrentWallpaperMenuTitle) {
                 prepareForUserInitiatedSurface()
                 currentWallpaperAlbumController.addCurrentWallpapersToAlbum()
             }

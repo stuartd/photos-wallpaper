@@ -17,9 +17,11 @@ Photos Wallpaper does not modify, delete, move, tag, favorite, or otherwise edit
 
 ## Photos Wallpaper Album
 
-When you choose "Add Current Wallpaper to Photos Wallpaper Album", or run the matching AppleScript command, Photos Wallpaper looks up the photos it set as wallpaper and adds them to an album named "Photos Wallpaper" in your Photos library.
+When you choose "Find Current Wallpaper in Photos", or run the matching AppleScript command, Photos Wallpaper looks up the photos it set as wallpaper and adds them to an album named "Photos Wallpaper" in your Photos library.
 
 Adding a photo to that album does not duplicate, edit, or move the photo. It only adds the existing Photos asset to the album. If you later remove a photo from that album in Photos, the original photo remains in your library unless you explicitly delete it from Photos.
+
+If you then choose "Open Album", Photos Wallpaper asks Photos to display the Photos Wallpaper album. macOS may ask for Automation permission the first time. Photos Wallpaper sends this request only when you choose "Open Album"; it does not otherwise control Photos.
 
 ## Local Settings
 
@@ -86,7 +88,8 @@ The data flow is intentionally simple:
 1. Photos Wallpaper reads image data from your Photos library after you grant permission.
 2. It creates a local wallpaper image file for the relevant display.
 3. It asks macOS to apply that file as desktop wallpaper.
-4. If you choose "Add Current Wallpaper to Photos Wallpaper Album" or run the matching AppleScript command, it adds the current wallpaper photo assets to the Photos Wallpaper album.
-5. It writes local history and diagnostics entries as described above.
+4. If you choose "Find Current Wallpaper in Photos" or run the matching AppleScript command, it adds the current wallpaper photo assets to the Photos Wallpaper album.
+5. If you then choose "Open Album", it asks Photos to display that album.
+6. It writes local history and diagnostics entries as described above.
 
 © Stuart Dunkeld 2026

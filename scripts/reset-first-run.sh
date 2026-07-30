@@ -77,6 +77,11 @@ tccutil reset Photos "${APP_BUNDLE_ID}" >/dev/null 2>&1 || true
 echo "Reset Photos permission for: ${APP_BUNDLE_ID}"
 
 echo
+echo "Resetting Photos Automation permission..."
+tccutil reset AppleEvents "${APP_BUNDLE_ID}" >/dev/null 2>&1 || true
+echo "Reset Photos Automation permission for: ${APP_BUNDLE_ID}"
+
+echo
 echo "Start at Login cannot be removed reliably from a shell script on all macOS versions."
 echo "Check System Settings > General > Login Items & Extensions and remove Photos Wallpaper if present."
 

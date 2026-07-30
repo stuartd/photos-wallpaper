@@ -7,6 +7,9 @@ protocol FirstRunWelcomePresenting {
 }
 
 final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting {
+    static let welcomeTitle = "Rediscover Your Photos"
+    static let welcomeMessage = "Photos Wallpaper puts random photos from your library on your desktop. Use the photo icon in the menu bar to set a schedule. When one catches your eye—for any reason—choose Find Current Wallpaper in Photos to add it to the Photos Wallpaper album and rediscover the moment around it."
+
     private var panel: NSPanel?
     private var panelCloseObserver: NSObjectProtocol?
 
@@ -29,11 +32,11 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         iconView.contentTintColor = .controlAccentColor
         iconView.imageScaling = .scaleProportionallyUpOrDown
 
-        let titleLabel = NSTextField(labelWithString: "Use the menu bar icon")
+        let titleLabel = NSTextField(labelWithString: Self.welcomeTitle)
         titleLabel.font = .boldSystemFont(ofSize: 17)
         titleLabel.alignment = .center
 
-        let bodyLabel = NSTextField(wrappingLabelWithString: "Click the photo icon at the top of your screen to set a schedule or change your wallpaper.")
+        let bodyLabel = NSTextField(wrappingLabelWithString: Self.welcomeMessage)
         bodyLabel.font = .preferredFont(forTextStyle: .body)
         bodyLabel.textColor = .secondaryLabelColor
         bodyLabel.alignment = .center
@@ -57,14 +60,14 @@ final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting 
         NSLayoutConstraint.activate([
             iconView.widthAnchor.constraint(equalToConstant: 44),
             iconView.heightAnchor.constraint(equalToConstant: 44),
-            bodyLabel.widthAnchor.constraint(equalToConstant: 280),
+            bodyLabel.widthAnchor.constraint(equalToConstant: 340),
             stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 28),
             stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -28),
             stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 22),
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -22)
         ])
 
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 190),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
                             styleMask: [.titled, .closable, .nonactivatingPanel],
                             backing: .buffered,
                             defer: false)

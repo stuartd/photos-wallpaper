@@ -157,6 +157,12 @@ struct PhotosWallpaperTests {
         #expect(defaults.bool(forKey: "didShowMenuBarWelcomeWindow"))
     }
 
+    @Test func firstRunWelcomeExplainsHowToRediscoverTheCurrentWallpaper() {
+        #expect(AppKitFirstRunWelcomePresenter.welcomeTitle == "Rediscover Your Photos")
+        #expect(AppKitFirstRunWelcomePresenter.welcomeMessage == "Photos Wallpaper puts random photos from your library on your desktop. Use the photo icon in the menu bar to set a schedule. When one catches your eye—for any reason—choose Find Current Wallpaper in Photos to add it to the Photos Wallpaper album and rediscover the moment around it.")
+        #expect(photos_wallpaperApp.findCurrentWallpaperMenuTitle == "Find Current Wallpaper in Photos…")
+    }
+
     @Test func firstRunNotifierSkipsMenuBarWelcomeWindowAfterPreviousRun() {
         let defaults = FakeDefaults()
         defaults.set(true, forKey: "didShowMenuBarWelcomeWindow")
@@ -2116,38 +2122,40 @@ struct PhotosWallpaperTests {
     @Test func currentWallpaperAlbumControllerShowsSingleWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1)
 
-        #expect(result.alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album.")
-        #expect(result.alerts.first?.message == "")
+        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(result.alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
+        #expect(result.alerts.first?.primaryButtonTitle == "Open Album")
+        #expect(result.alerts.first?.primaryAction == .openAlbum)
     }
 
     @Test func currentWallpaperAlbumControllerShowsTwoWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2)
 
-        #expect(result.alerts.first?.title == "Added both wallpaper photos to the Photos Wallpaper album.")
-        #expect(result.alerts.first?.message == "")
+        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
     }
 
     @Test func currentWallpaperAlbumControllerShowsThreeOrMoreWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 3)
 
-        #expect(result.alerts.first?.title == "Added all wallpaper photos to the Photos Wallpaper album.")
-        #expect(result.alerts.first?.message == "")
+        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
     }
 
     @Test func currentWallpaperAlbumControllerShowsAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
                                                              albumAddResults: [.success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "The wallpaper photo was already in the Photos Wallpaper album.")
-        #expect(result.alerts.first?.message == "")
+        #expect(result.alerts.first?.title == "Already in Photos Wallpaper")
+        #expect(result.alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
     }
 
     @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
                                                              albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album. The wallpaper photo was already in the Photos Wallpaper album.")
-        #expect(result.alerts.first?.message == "")
+        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
     }
 
     @Test func currentWallpaperAlbumControllerExplainsMissingPhotosInPlainLanguage() async {
@@ -2157,6 +2165,54 @@ struct PhotosWallpaperTests {
 
         #expect(result.alerts.first?.title == "Wallpaper Photo No Longer in Photos")
         #expect(result.alerts.first?.message == "One wallpaper photo is no longer in Photos, so it could not be added.")
+        #expect(result.alerts.first?.primaryAction == nil)
+    }
+
+    @Test func currentWallpaperAlbumControllerOpensAlbumAfterConfirmation() async {
+        let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
+                                                             alertActions: [.openAlbum])
+
+        #expect(result.albumOpener.openAlbumCallCount == 1)
+        #expect(result.albumOpener.openPhotosCallCount == 0)
+    }
+
+    @Test func currentWallpaperAlbumControllerFallsBackWhenAlbumCannotBeOpened() async {
+        let result = await currentWallpaperAlbumConfirmation(
+            assetCount: 1,
+            alertActions: [.openAlbum, .openPhotos],
+            albumOpenResult: false)
+
+        #expect(result.alerts.count == 2)
+        #expect(result.alerts.last?.title == "Album Could Not Be Opened")
+        #expect(result.alerts.last?.message == "Open Photos and select Photos Wallpaper under Albums in the sidebar.")
+        #expect(result.alerts.last?.primaryButtonTitle == "Open Photos")
+        #expect(result.alerts.last?.primaryAction == .openPhotos)
+        #expect(result.albumOpener.openAlbumCallCount == 1)
+        #expect(result.albumOpener.openPhotosCallCount == 1)
+    }
+
+    @Test func photosAlbumOpenerTargetsThePhotosWallpaperAlbum() {
+        var executedScripts: [String] = []
+        var openPhotosCallCount = 0
+        let opener = AppKitPhotosAlbumOpener(
+            runAppleScript: { source in
+                executedScripts.append(source)
+                return true
+            },
+            openApplication: {
+                openPhotosCallCount += 1
+                return true
+            })
+
+        #expect(opener.openPhotosWallpaperAlbum())
+        #expect(executedScripts.count == 1)
+        #expect(executedScripts[0].contains("tell application \"/System/Applications/Photos.app\""))
+        #expect(executedScripts[0].contains("every album whose name is \"Photos Wallpaper\""))
+        #expect(executedScripts[0].contains("spotlight item 1 of matchingAlbums"))
+        #expect(openPhotosCallCount == 0)
+
+        #expect(opener.openPhotosApplication())
+        #expect(openPhotosCallCount == 1)
     }
 
     @Test func currentWallpaperAlbumControllerRetriesAfterPhotosAuthorizationIsGranted() async {
@@ -2165,11 +2221,12 @@ struct PhotosWallpaperTests {
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
         photoManager.photoLookupOverride = .waitingForAuthorization
-        var alerts: [(title: String, message: String)] = []
+        var alerts: [CurrentWallpaperAlbumResultPresentation] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
-            photoManager: photoManager) { title, message in
-                alerts.append((title, message))
+            photoManager: photoManager) { presentation in
+                alerts.append(presentation)
+                return .done
             }
         logger.recordWallpaperChange(
             photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
@@ -2195,8 +2252,8 @@ struct PhotosWallpaperTests {
 
         #expect(didShowConfirmation)
         #expect(!controller.isWaitingForAuthorization)
-        #expect(alerts.first?.title == "Added the wallpaper photo to the Photos Wallpaper album.")
-        #expect(alerts.first?.message == "")
+        #expect(alerts.first?.title == "Added to Photos Wallpaper")
+        #expect(alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
         #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"], ["ID-1/L0/001"]])
         #expect(photoManager.albumAddRequests.count == 1)
     }
@@ -2209,8 +2266,9 @@ struct PhotosWallpaperTests {
         var observedAlertState: Bool?
         var controller: CurrentWallpaperAlbumController!
         controller = CurrentWallpaperAlbumController(historyLogger: logger,
-                                                     photoManager: photoManager) { _, _ in
+                                                     photoManager: photoManager) { _ in
             observedAlertState = controller.isPresentingAlert
+            return .done
         }
         logger.recordWallpaperChange(photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
                                       screenName: "Screen 1",
@@ -2232,6 +2290,7 @@ struct PhotosWallpaperTests {
         let appBundle = Bundle(for: AddCurrentWallpaperToPhotosWallpaperAlbumCommand.self)
 
         #expect(appBundle.object(forInfoDictionaryKey: "NSAppleScriptEnabled") as? Bool == true)
+        #expect(appBundle.object(forInfoDictionaryKey: "NSAppleEventsUsageDescription") as? String == "Photos Wallpaper needs permission to open the Photos Wallpaper album in Photos when you ask it to.")
         #expect(appBundle.object(forInfoDictionaryKey: "OSAScriptingDefinition") as? String == "PhotosWallpaper.sdef")
         #expect(appBundle.url(forResource: "PhotosWallpaper", withExtension: "sdef") != nil)
         #expect(NSClassFromString("AddCurrentWallpaperToPhotosWallpaperAlbumCommand") != nil)
@@ -2274,11 +2333,12 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
-        var alerts: [(title: String, message: String)] = []
+        var alerts: [CurrentWallpaperAlbumResultPresentation] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
-            photoManager: photoManager) { title, message in
-                alerts.append((title, message))
+            photoManager: photoManager) { presentation in
+                alerts.append(presentation)
+                return .done
             }
         let coordinator = AppleScriptCommandCoordinator()
         coordinator.configure(currentWallpaperAlbumController: controller)
@@ -2319,8 +2379,9 @@ struct PhotosWallpaperTests {
         let photoManager = FakePhotoManager()
         let controller = CurrentWallpaperAlbumController(
             historyLogger: currentSessionLogger,
-            photoManager: photoManager) { _, _ in
+            photoManager: photoManager) { _ in
                 Issue.record("The AppleScript path should not show an in-app alert.")
+                return .done
             }
         let coordinator = AppleScriptCommandCoordinator()
         coordinator.configure(currentWallpaperAlbumController: controller)
@@ -2340,7 +2401,10 @@ struct PhotosWallpaperTests {
                                                    albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = [],
                                                    missingLookupIdentifiers: Set<String> = [],
                                                    expectedAlbumAddCount: Int? = nil,
-                                                   expectedAlertTitle: String? = nil) async -> (alerts: [(title: String, message: String)], photoManager: FakePhotoManager) {
+                                                   expectedAlertTitle: String? = nil,
+                                                   alertActions: [CurrentWallpaperAlbumAlertAction] = [.done],
+                                                   albumOpenResult: Bool = true,
+                                                   photosOpenResult: Bool = true) async -> (alerts: [CurrentWallpaperAlbumResultPresentation], photoManager: FakePhotoManager, albumOpener: FakePhotosAlbumOpener) {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
@@ -2348,10 +2412,15 @@ struct PhotosWallpaperTests {
         let photoManager = FakePhotoManager(assetsToReturn: assets)
         photoManager.albumAddResults = albumAddResults
         photoManager.missingLookupIdentifiers = missingLookupIdentifiers
-        var alerts: [(title: String, message: String)] = []
+        let albumOpener = FakePhotosAlbumOpener(openAlbumResult: albumOpenResult,
+                                                openPhotosResult: photosOpenResult)
+        var alerts: [CurrentWallpaperAlbumResultPresentation] = []
+        var remainingAlertActions = alertActions
         let controller = CurrentWallpaperAlbumController(historyLogger: logger,
-                                                        photoManager: photoManager) { title, message in
-            alerts.append((title, message))
+                                                        photoManager: photoManager,
+                                                        albumOpener: albumOpener) { presentation in
+            alerts.append(presentation)
+            return remainingAlertActions.isEmpty ? .done : remainingAlertActions.removeFirst()
         }
         let timestamp = Date(timeIntervalSince1970: 0)
         for index in 1...assetCount {
@@ -2375,9 +2444,32 @@ struct PhotosWallpaperTests {
         let expectedAlbumAddCount = expectedAlbumAddCount ?? assetCount
         #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == assets.prefix(expectedAlbumAddCount).map(ObjectIdentifier.init))
         #expect(photoManager.wallpaperAssignments.isEmpty)
-        return (alerts, photoManager)
+        return (alerts, photoManager, albumOpener)
     }
 
+}
+
+@MainActor
+private final class FakePhotosAlbumOpener: PhotosAlbumOpening {
+    private let openAlbumResult: Bool
+    private let openPhotosResult: Bool
+    private(set) var openAlbumCallCount = 0
+    private(set) var openPhotosCallCount = 0
+
+    init(openAlbumResult: Bool = true, openPhotosResult: Bool = true) {
+        self.openAlbumResult = openAlbumResult
+        self.openPhotosResult = openPhotosResult
+    }
+
+    func openPhotosWallpaperAlbum() -> Bool {
+        openAlbumCallCount += 1
+        return openAlbumResult
+    }
+
+    func openPhotosApplication() -> Bool {
+        openPhotosCallCount += 1
+        return openPhotosResult
+    }
 }
 
 private final class FakePhotoManager: PhotoManaging {

@@ -26,7 +26,7 @@ struct AddCurrentWallpaperScriptResponse: Equatable {
     let errorMessage: String?
 
     init(additionResult: CurrentWallpaperAlbumAdditionResult) {
-        let presentation = CurrentWallpaperAlbumResultPresenter.presentation(for: additionResult)
+        let presentation = CurrentWallpaperAlbumResultPresenter.scriptPresentation(for: additionResult)
         switch additionResult {
         case .added(_, _, let missingIdentifierCount, let failedAddCount)
             where missingIdentifierCount == 0 && failedAddCount == 0:

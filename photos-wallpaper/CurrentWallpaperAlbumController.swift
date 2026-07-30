@@ -11,9 +11,27 @@ enum CurrentWallpaperAlbumAdditionResult: Equatable {
     case unavailable
 }
 
+enum CurrentWallpaperAlbumAlertAction: Equatable {
+    case done
+    case openAlbum
+    case openPhotos
+}
+
 struct CurrentWallpaperAlbumResultPresentation: Equatable {
     let title: String
     let message: String
+    let primaryButtonTitle: String?
+    let primaryAction: CurrentWallpaperAlbumAlertAction?
+
+    init(title: String,
+         message: String,
+         primaryButtonTitle: String? = nil,
+         primaryAction: CurrentWallpaperAlbumAlertAction? = nil) {
+        self.title = title
+        self.message = message
+        self.primaryButtonTitle = primaryButtonTitle
+        self.primaryAction = primaryAction
+    }
 
     var combinedMessage: String {
         message.isEmpty ? title : "\(title): \(message)"
@@ -28,13 +46,20 @@ enum CurrentWallpaperAlbumResultPresenter {
                                        alreadyInAlbumCount: alreadyInAlbumCount,
                                        missingIdentifierCount: missingIdentifierCount,
                                        failedAddCount: failedAddCount)
+            let photoCountInAlbum = addedCount + alreadyInAlbumCount
             guard missingIdentifierCount > 0 || failedAddCount > 0 else {
-                return CurrentWallpaperAlbumResultPresentation(title: summary, message: "")
+                return CurrentWallpaperAlbumResultPresentation(
+                    title: addedCount > 0 ? "Added to Photos Wallpaper" : "Already in Photos Wallpaper",
+                    message: rediscoveryMessage(photoCount: photoCountInAlbum),
+                    primaryButtonTitle: "Open Album",
+                    primaryAction: .openAlbum)
             }
             return CurrentWallpaperAlbumResultPresentation(
                 title: albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
                                          failedAddCount: failedAddCount),
-                message: summary)
+                message: summary,
+                primaryButtonTitle: photoCountInAlbum > 0 ? "Open Album" : nil,
+                primaryAction: photoCountInAlbum > 0 ? .openAlbum : nil)
         case .noRememberedWallpapers:
             return CurrentWallpaperAlbumResultPresentation(
                 title: "No Current Wallpapers Yet",
@@ -56,6 +81,34 @@ enum CurrentWallpaperAlbumResultPresenter {
                 title: "Photos Unavailable",
                 message: "Photos Wallpaper could not search your Photos library right now.")
         }
+    }
+
+    static func scriptPresentation(for result: CurrentWallpaperAlbumAdditionResult) -> CurrentWallpaperAlbumResultPresentation {
+        guard case .added(let addedCount,
+                          let alreadyInAlbumCount,
+                          let missingIdentifierCount,
+                          let failedAddCount) = result else {
+            return presentation(for: result)
+        }
+
+        let summary = albumSummary(addedCount: addedCount,
+                                   alreadyInAlbumCount: alreadyInAlbumCount,
+                                   missingIdentifierCount: missingIdentifierCount,
+                                   failedAddCount: failedAddCount)
+        guard missingIdentifierCount > 0 || failedAddCount > 0 else {
+            return CurrentWallpaperAlbumResultPresentation(title: summary, message: "")
+        }
+        return CurrentWallpaperAlbumResultPresentation(
+            title: albumFailureTitle(missingIdentifierCount: missingIdentifierCount,
+                                     failedAddCount: failedAddCount),
+            message: summary)
+    }
+
+    private static func rediscoveryMessage(photoCount: Int) -> String {
+        if photoCount == 1 {
+            return "Open the album in Photos to see the original and rediscover the moment around it."
+        }
+        return "Open the album in Photos to see the originals and rediscover the moments around them."
     }
 
     private static func albumSummary(addedCount: Int,
@@ -238,7 +291,8 @@ struct CurrentWallpaperAlbumAdder {
 
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
-    private let showAlert: @MainActor (String, String) -> Void
+    private let albumOpener: PhotosAlbumOpening
+    private let showAlert: @MainActor (CurrentWallpaperAlbumResultPresentation) -> CurrentWallpaperAlbumAlertAction
     private var pendingAuthorizationRequests: [PendingAuthorizationRequest] = []
 
     private struct PendingAuthorizationRequest {
@@ -250,14 +304,28 @@ struct CurrentWallpaperAlbumAdder {
     convenience init(historyLogger: WallpaperHistoryLogger) {
         self.init(historyLogger: historyLogger,
                   photoManager: PhotoManager.shared,
+                  albumOpener: AppKitPhotosAlbumOpener(),
                   showAlert: CurrentWallpaperAlbumController.runModalAlert)
+    }
+
+    convenience init(
+        historyLogger: WallpaperHistoryLogger,
+        photoManager: PhotoManaging,
+        showAlert: @escaping @MainActor (CurrentWallpaperAlbumResultPresentation) -> CurrentWallpaperAlbumAlertAction
+    ) {
+        self.init(historyLogger: historyLogger,
+                  photoManager: photoManager,
+                  albumOpener: AppKitPhotosAlbumOpener(),
+                  showAlert: showAlert)
     }
 
     init(historyLogger: WallpaperHistoryLogger,
          photoManager: PhotoManaging,
-         showAlert: @escaping @MainActor (String, String) -> Void) {
+         albumOpener: PhotosAlbumOpening,
+         showAlert: @escaping @MainActor (CurrentWallpaperAlbumResultPresentation) -> CurrentWallpaperAlbumAlertAction) {
         self.historyLogger = historyLogger
         self.photoManager = photoManager
+        self.albumOpener = albumOpener
         self.showAlert = showAlert
         photoManager.addPhotoAuthorizationChangeHandler { [weak self] in
             Task { @MainActor [weak self] in
@@ -334,22 +402,59 @@ struct CurrentWallpaperAlbumAdder {
 
     private func handle(_ result: CurrentWallpaperAlbumAdditionResult) {
         let presentation = CurrentWallpaperAlbumResultPresenter.presentation(for: result)
-        presentAlert(title: presentation.title, message: presentation.message)
+        switch presentAlert(presentation) {
+        case .openAlbum:
+            openPhotosWallpaperAlbum()
+        case .openPhotos:
+            openPhotosApplication()
+        case .done:
+            break
+        }
     }
 
-    private func presentAlert(title: String, message: String) {
+    private func openPhotosWallpaperAlbum() {
+        guard !albumOpener.openPhotosWallpaperAlbum() else { return }
+
+        let fallback = CurrentWallpaperAlbumResultPresentation(
+            title: "Album Could Not Be Opened",
+            message: "Open Photos and select Photos Wallpaper under Albums in the sidebar.",
+            primaryButtonTitle: "Open Photos",
+            primaryAction: .openPhotos)
+        if presentAlert(fallback) == .openPhotos {
+            openPhotosApplication()
+        }
+    }
+
+    private func openPhotosApplication() {
+        guard !albumOpener.openPhotosApplication() else { return }
+
+        _ = presentAlert(CurrentWallpaperAlbumResultPresentation(
+            title: "Photos Could Not Be Opened",
+            message: "Open Photos manually and select Photos Wallpaper under Albums in the sidebar."))
+    }
+
+    private func presentAlert(_ presentation: CurrentWallpaperAlbumResultPresentation) -> CurrentWallpaperAlbumAlertAction {
         isPresentingAlert = true
         defer { isPresentingAlert = false }
-        showAlert(title, message)
+        return showAlert(presentation)
     }
 
-    private static func runModalAlert(title: String, message: String) {
+    private static func runModalAlert(_ presentation: CurrentWallpaperAlbumResultPresentation) -> CurrentWallpaperAlbumAlertAction {
         let alert = NSAlert()
-        alert.messageText = title
-        if !message.isEmpty {
-            alert.informativeText = message
+        alert.messageText = presentation.title
+        if !presentation.message.isEmpty {
+            alert.informativeText = presentation.message
         }
+
+        if let primaryButtonTitle = presentation.primaryButtonTitle,
+           let primaryAction = presentation.primaryAction {
+            alert.addButton(withTitle: primaryButtonTitle)
+            alert.addButton(withTitle: "Done")
+            return alert.runModal() == .alertFirstButtonReturn ? primaryAction : .done
+        }
+
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        _ = alert.runModal()
+        return .done
     }
 }
