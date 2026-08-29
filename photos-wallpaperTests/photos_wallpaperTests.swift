@@ -158,7 +158,7 @@ struct PhotosWallpaperTests {
     }
 
     @Test func firstRunWelcomeExplainsHowToRediscoverTheCurrentWallpaper() {
-        #expect(AppKitFirstRunWelcomePresenter.welcomeTitle == "Rediscover Your Photos")
+        #expect(AppKitFirstRunWelcomePresenter.welcomeTitle == "Rediscover your photos")
         #expect(AppKitFirstRunWelcomePresenter.welcomeMessage == "Photos Wallpaper puts random photos from your library on your desktop. Use the photo icon in the menu bar to set a schedule. When one catches your eye—for any reason—choose Find Current Wallpaper in Photos to add it to the Photos Wallpaper album and rediscover the moment around it.")
         #expect(photos_wallpaperApp.findCurrentWallpaperMenuTitle == "Find Current Wallpaper in Photos…")
     }
@@ -2125,32 +2125,32 @@ struct PhotosWallpaperTests {
     @Test func currentWallpaperAlbumControllerShowsSingleWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1)
 
-        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
-        #expect(result.alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
-        #expect(result.alerts.first?.primaryButtonTitle == "Open Album")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.addedTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.singlePhotoRediscoveryMessage)
+        #expect(result.alerts.first?.primaryButtonTitle == CurrentWallpaperAlbumStrings.openAlbumButtonTitle)
         #expect(result.alerts.first?.primaryAction == .openAlbum)
     }
 
     @Test func currentWallpaperAlbumControllerShowsTwoWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2)
 
-        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
-        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.addedTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.multiplePhotoRediscoveryMessage)
     }
 
     @Test func currentWallpaperAlbumControllerShowsThreeOrMoreWallpaperConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 3)
 
-        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
-        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.addedTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.multiplePhotoRediscoveryMessage)
     }
 
     @Test func currentWallpaperAlbumControllerShowsAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 1,
                                                              albumAddResults: [.success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "Already in Photos Wallpaper")
-        #expect(result.alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.alreadyInAlbumTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.singlePhotoRediscoveryMessage)
     }
 
     @Test func currentWallpaperAlbumControllerDoesNotUseStaleIdentifierAfterWallpaperWasReplaced() async {
@@ -2178,8 +2178,8 @@ struct PhotosWallpaperTests {
         }
 
         #expect(didShowExplanation)
-        #expect(alerts.first?.title == "Current Wallpaper Not Set by Photos Wallpaper")
-        #expect(alerts.first?.message == "Photos Wallpaper can only add a wallpaper that it set. Choose Change Wallpaper Now, then try again.")
+        #expect(alerts.first?.title == CurrentWallpaperAlbumStrings.currentWallpaperNotSetTitle)
+        #expect(alerts.first?.message == CurrentWallpaperAlbumStrings.currentWallpaperNotSetMessage)
         #expect(photoManager.batchLookupRequests.isEmpty)
         #expect(photoManager.albumAddRequests.isEmpty)
     }
@@ -2259,8 +2259,8 @@ struct PhotosWallpaperTests {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
                                                              albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
 
-        #expect(result.alerts.first?.title == "Added to Photos Wallpaper")
-        #expect(result.alerts.first?.message == "Open the album in Photos to see the originals and rediscover the moments around them.")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.addedTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.multiplePhotoRediscoveryMessage)
     }
 
     @Test func currentWallpaperAlbumControllerExplainsMissingPhotosInPlainLanguage() async {
@@ -2268,8 +2268,8 @@ struct PhotosWallpaperTests {
                                                              missingLookupIdentifiers: ["ID-1/L0/001"],
                                                              expectedAlbumAddCount: 0)
 
-        #expect(result.alerts.first?.title == "Wallpaper Photo No Longer in Photos")
-        #expect(result.alerts.first?.message == "One wallpaper photo is no longer in Photos, so it could not be added.")
+        #expect(result.alerts.first?.title == CurrentWallpaperAlbumStrings.singlePhotoMissingTitle)
+        #expect(result.alerts.first?.message == CurrentWallpaperAlbumStrings.singlePhotoMissingMessage)
         #expect(result.alerts.first?.primaryAction == nil)
     }
 
@@ -2288,9 +2288,9 @@ struct PhotosWallpaperTests {
             albumOpenResult: false)
 
         #expect(result.alerts.count == 2)
-        #expect(result.alerts.last?.title == "Album Could Not Be Opened")
-        #expect(result.alerts.last?.message == "Open Photos and select Photos Wallpaper under Albums in the sidebar.")
-        #expect(result.alerts.last?.primaryButtonTitle == "Open Photos")
+        #expect(result.alerts.last?.title == CurrentWallpaperAlbumStrings.albumCouldNotBeOpenedTitle)
+        #expect(result.alerts.last?.message == CurrentWallpaperAlbumStrings.albumCouldNotBeOpenedMessage)
+        #expect(result.alerts.last?.primaryButtonTitle == CurrentWallpaperAlbumStrings.openPhotosButtonTitle)
         #expect(result.alerts.last?.primaryAction == .openPhotos)
         #expect(result.albumOpener.openAlbumCallCount == 1)
         #expect(result.albumOpener.openPhotosCallCount == 1)
@@ -2358,8 +2358,8 @@ struct PhotosWallpaperTests {
 
         #expect(didShowConfirmation)
         #expect(!controller.isWaitingForAuthorization)
-        #expect(alerts.first?.title == "Added to Photos Wallpaper")
-        #expect(alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
+        #expect(alerts.first?.title == CurrentWallpaperAlbumStrings.addedTitle)
+        #expect(alerts.first?.message == CurrentWallpaperAlbumStrings.singlePhotoRediscoveryMessage)
         #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"], ["ID-1/L0/001"]])
         #expect(photoManager.albumAddRequests.count == 1)
     }
@@ -2398,7 +2398,7 @@ struct PhotosWallpaperTests {
         }
 
         #expect(didShowExplanation)
-        #expect(alerts.first?.title == "Current Wallpaper Not Set by Photos Wallpaper")
+        #expect(alerts.first?.title == CurrentWallpaperAlbumStrings.currentWallpaperNotSetTitle)
         #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"]])
         #expect(photoManager.albumAddRequests.isEmpty)
     }
@@ -2449,7 +2449,7 @@ struct PhotosWallpaperTests {
                                    missingIdentifierCount: 0,
                                    failedAddCount: 0))
 
-        #expect(response.result == "Added both wallpaper photos to the Photos Wallpaper album.")
+        #expect(response.result == CurrentWallpaperAlbumStrings.twoPhotosAddedMessage)
         #expect(response.errorNumber == NSNoScriptError)
         #expect(response.errorMessage == nil)
     }
@@ -2463,13 +2463,21 @@ struct PhotosWallpaperTests {
 
         #expect(response.result == nil)
         #expect(response.errorNumber == NSInternalScriptError)
-        #expect(response.errorMessage == "Wallpaper Photo No Longer in Photos: Added the wallpaper photo to the Photos Wallpaper album. One wallpaper photo is no longer in Photos, so it could not be added.")
+        let expectedMessage = CurrentWallpaperAlbumResultPresentation(
+            title: CurrentWallpaperAlbumStrings.singlePhotoMissingTitle,
+            message: "\(CurrentWallpaperAlbumStrings.singlePhotoAddedMessage) \(CurrentWallpaperAlbumStrings.singlePhotoMissingMessage)")
+            .combinedMessage
+        #expect(response.errorMessage == expectedMessage)
     }
 
     @Test func appleScriptAlbumCommandReturnsANoOpResultWhenNoWallpaperWasSetThisSession() {
         let response = AddCurrentWallpaperScriptResponse(additionResult: .noWallpaperSetThisSession)
 
-        #expect(response.result == "No Wallpaper Set This Session: Photos Wallpaper can’t run this script until it has set the wallpaper at least once since startup.")
+        let expectedResult = CurrentWallpaperAlbumResultPresentation(
+            title: CurrentWallpaperAlbumStrings.noWallpaperSetThisSessionTitle,
+            message: CurrentWallpaperAlbumStrings.noWallpaperSetThisSessionMessage)
+            .combinedMessage
+        #expect(response.result == expectedResult)
         #expect(response.errorNumber == NSNoScriptError)
         #expect(response.errorMessage == nil)
     }

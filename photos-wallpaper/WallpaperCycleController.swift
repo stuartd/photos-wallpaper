@@ -36,14 +36,14 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
 
     func notifyNoPhotosAvailable() {
         queueNotification(identifier: "no-photos-available-\(UUID().uuidString)",
-                          title: "No Photos Available",
+                          title: "No photos available",
                           body: "Photos Wallpaper can't set your wallpaper because no photos are available.")
     }
 
     func notifyPhotoLibraryPermissionDenied() {
         DispatchQueue.main.async {
             let alert = NSAlert()
-            alert.messageText = "Photos Access Needed"
+            alert.messageText = "Photos access needed"
             alert.informativeText = "Photos Wallpaper does not have permission to read your Photos library.\n\nEnable access in System Settings > Privacy & Security > Photos, then try again."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "Open System Settings")

@@ -7,7 +7,7 @@ protocol FirstRunWelcomePresenting {
 }
 
 final class AppKitFirstRunWelcomePresenter: NSObject, FirstRunWelcomePresenting {
-    static let welcomeTitle = "Rediscover Your Photos"
+    static let welcomeTitle = "Rediscover your photos"
     static let welcomeMessage = "Photos Wallpaper puts random photos from your library on your desktop. Use the photo icon in the menu bar to set a schedule. When one catches your eye—for any reason—choose Find Current Wallpaper in Photos to add it to the Photos Wallpaper album and rediscover the moment around it."
 
     private var panel: NSPanel?
