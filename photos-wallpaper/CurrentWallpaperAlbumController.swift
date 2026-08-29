@@ -359,8 +359,7 @@ struct CurrentWallpaperAlbumAdder {
     }
 
     private func currentManagedWallpaperIdentifiers() -> [String] {
-        historyLogger.currentWallpaperIdentifiersSnapshot(
-            forScreenNumbers: photoManager.managedCurrentWallpaperScreenNumbers())
+        photoManager.managedCurrentWallpaperIdentifiers()
     }
 
     private func identifiersStillCurrent(_ identifiers: [String]) -> [String] {

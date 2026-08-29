@@ -1123,7 +1123,7 @@ enum WallpaperPhotoSelector {
                 }
                 if let image = image {
                     debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
-                    if photoManager.setImageAsWallpaper(image, for: screen) {
+                    if photoManager.setImageAsWallpaper(image, from: asset, for: screen) {
                         Task { @MainActor [weak self] in
                             self?.clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: trigger)
                         }

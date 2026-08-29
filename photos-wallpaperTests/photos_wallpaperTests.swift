@@ -1050,6 +1050,8 @@ struct PhotosWallpaperTests {
         #expect(photoManager.requestedSizes == screens.map { $0.testPixelSize })
         #expect(photoManager.wallpaperAssignments.count == 3)
         #expect(photoManager.wallpaperAssignments.map(\.screen) == screens)
+        #expect(photoManager.wallpaperAssignments.map { ObjectIdentifier($0.asset) }
+            == photoManager.requestedAssets.map(ObjectIdentifier.init))
     }
 
     @Test func triggerNowReusesAPhotoWhenThereAreFewerPhotosThanScreens() async {
@@ -2156,12 +2158,13 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
-        photoManager.managedWallpaperScreenNumbers = []
+        photoManager.managedWallpaperIdentifiers = []
         var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
-            photoManager: photoManager) { title, message in
-                alerts.append((title, message))
+            photoManager: photoManager) { presentation in
+                alerts.append((presentation.title, presentation.message))
+                return .done
             }
         logger.recordWallpaperChange(
             photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: STALE-ID/L0/001",
@@ -2181,18 +2184,19 @@ struct PhotosWallpaperTests {
         #expect(photoManager.albumAddRequests.isEmpty)
     }
 
-    @Test func currentWallpaperAlbumControllerKeepsOnlyDisplaysStillUsingManagedWallpapers() async {
+    @Test func currentWallpaperAlbumControllerUsesIdentifierFromCurrentWallpaperFile() async {
         let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let asset = makeFakeAsset()
         let photoManager = FakePhotoManager(assetsToReturn: [asset])
-        photoManager.managedWallpaperScreenNumbers = [2]
+        photoManager.managedWallpaperIdentifiers = ["CURRENT-ID/L0/001"]
         var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
-            photoManager: photoManager) { title, message in
-                alerts.append((title, message))
+            photoManager: photoManager) { presentation in
+                alerts.append((presentation.title, presentation.message))
+                return .done
             }
         let timestamp = Date(timeIntervalSince1970: 0)
         logger.recordWallpaperChange(
@@ -2228,6 +2232,27 @@ struct PhotosWallpaperTests {
         #expect(!PhotoManager.isGeneratedWallpaperURL(
             cacheURL.appendingPathComponent("ordinary-wallpaper.jpg"),
             in: cacheURL))
+    }
+
+    @Test func generatedWallpaperFilenameCarriesItsPhotosIdentifier() {
+        let cacheURL = URL(fileURLWithPath: "/tmp/photos-wallpaper/.WallpaperCache", isDirectory: true)
+        let identifier = "A43F0D8A-4F5A-47A3-AF9D-03B54BD21D9C/L0/001"
+        let encodedIdentifier = Data(identifier.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let wallpaperURL = cacheURL.appendingPathComponent(
+            "current-wallpaper-42-ABC.asset-\(encodedIdentifier).jpg")
+
+        #expect(PhotoManager.localIdentifier(inGeneratedWallpaperURL: wallpaperURL,
+                                             in: cacheURL) == identifier)
+        #expect(PhotoManager.localIdentifier(
+            inGeneratedWallpaperURL: cacheURL.appendingPathComponent("current-wallpaper-42-ABC.jpg"),
+            in: cacheURL) == nil)
+        #expect(PhotoManager.localIdentifier(
+            inGeneratedWallpaperURL: URL(fileURLWithPath: "/tmp/\(wallpaperURL.lastPathComponent)"),
+            in: cacheURL) == nil)
     }
 
     @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
@@ -2300,6 +2325,7 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.managedWallpaperIdentifiers = ["ID-1/L0/001"]
         photoManager.photoLookupOverride = .waitingForAuthorization
         var alerts: [CurrentWallpaperAlbumResultPresentation] = []
         let controller = CurrentWallpaperAlbumController(
@@ -2343,12 +2369,14 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.managedWallpaperIdentifiers = ["ID-1/L0/001"]
         photoManager.photoLookupOverride = .waitingForAuthorization
         var alerts: [(title: String, message: String)] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
-            photoManager: photoManager) { title, message in
-                alerts.append((title, message))
+            photoManager: photoManager) { presentation in
+                alerts.append((presentation.title, presentation.message))
+                return .done
             }
         logger.recordWallpaperChange(
             photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
@@ -2362,7 +2390,7 @@ struct PhotosWallpaperTests {
         }
 
         #expect(didStartWaiting)
-        photoManager.managedWallpaperScreenNumbers = []
+        photoManager.managedWallpaperIdentifiers = []
         photoManager.photoLookupOverride = nil
         photoManager.notifyPhotoAuthorizationDidChange()
         let didShowExplanation = await waitForCondition {
@@ -2380,6 +2408,7 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.managedWallpaperIdentifiers = ["ID-1/L0/001"]
         var observedAlertState: Bool?
         var controller: CurrentWallpaperAlbumController!
         controller = CurrentWallpaperAlbumController(historyLogger: logger,
@@ -2450,6 +2479,7 @@ struct PhotosWallpaperTests {
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.managedWallpaperIdentifiers = ["ID-1/L0/001"]
         var alerts: [CurrentWallpaperAlbumResultPresentation] = []
         let controller = CurrentWallpaperAlbumController(
             historyLogger: logger,
@@ -2527,6 +2557,7 @@ struct PhotosWallpaperTests {
         let logger = WallpaperHistoryLogger(logURL: logURL)
         let assets = (0..<assetCount).map { _ in makeFakeAsset() }
         let photoManager = FakePhotoManager(assetsToReturn: assets)
+        photoManager.managedWallpaperIdentifiers = (1...assetCount).map { "ID-\($0)/L0/001" }
         photoManager.albumAddResults = albumAddResults
         photoManager.missingLookupIdentifiers = missingLookupIdentifiers
         let albumOpener = FakePhotosAlbumOpener(openAlbumResult: albumOpenResult,
@@ -2604,7 +2635,7 @@ private final class FakePhotoManager: PhotoManaging {
     private(set) var requestedDisplayOrientations: [[WallpaperOrientation]] = []
     private(set) var requestedAssets: [PHAsset] = []
     private(set) var requestedSizes: [CGSize] = []
-    private(set) var wallpaperAssignments: [(image: NSImage, screen: NSScreen)] = []
+    private(set) var wallpaperAssignments: [(image: NSImage, asset: PHAsset, screen: NSScreen)] = []
     private(set) var albumAddRequests: [PHAsset] = []
     private(set) var singleLookupRequests: [String] = []
     private(set) var batchLookupRequests: [[String]] = []
@@ -2612,7 +2643,7 @@ private final class FakePhotoManager: PhotoManaging {
     var photoLookupOverride: PhotoAssetsLookupResult?
     var albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = []
     var shouldSucceedSettingWallpaper = true
-    var managedWallpaperScreenNumbers = Set(1...100)
+    var managedWallpaperIdentifiers: [String] = []
 
     init(assetsToReturn: [PHAsset]? = nil,
          assetNames: [String]? = nil,
@@ -2713,8 +2744,8 @@ private final class FakePhotoManager: PhotoManaging {
         }
     }
 
-    func managedCurrentWallpaperScreenNumbers() -> Set<Int> {
-        managedWallpaperScreenNumbers
+    func managedCurrentWallpaperIdentifiers() -> [String] {
+        managedWallpaperIdentifiers
     }
 
     func completePendingImageRequests() {
@@ -2734,8 +2765,8 @@ private final class FakePhotoManager: PhotoManaging {
         }
     }
 
-    func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
-        wallpaperAssignments.append((image: image, screen: screen))
+    func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool {
+        wallpaperAssignments.append((image: image, asset: asset, screen: screen))
         return shouldSucceedSettingWallpaper
     }
 

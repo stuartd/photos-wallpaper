@@ -57,10 +57,10 @@ protocol PhotoManaging: AnyObject {
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
-    func managedCurrentWallpaperScreenNumbers() -> Set<Int>
+    func managedCurrentWallpaperIdentifiers() -> [String]
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void)
-    func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
+    func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool
 }
 
 /// Bridges Photos.framework and wallpaper setting.
@@ -210,23 +210,27 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    /// Returns the one-based screen numbers whose current desktop image is still a file generated
-    /// by Photos Wallpaper. Persisted Photos identifiers are only reliable while those files remain
-    /// active; macOS or the user may have replaced a desktop since the app last ran.
-    func managedCurrentWallpaperScreenNumbers() -> Set<Int> {
+    /// Returns the Photos identifiers encoded in the generated files that macOS currently uses.
+    ///
+    /// The identifier travels with the wallpaper file rather than a positional "Screen 1" key, so
+    /// unplugging or rearranging displays cannot associate a desktop with another screen's photo.
+    func managedCurrentWallpaperIdentifiers() -> [String] {
         let cacheDirectoryURL = wallpaperCacheDirectoryURL()
-        var screenNumbers = Set<Int>()
+        var identifiers: [String] = []
+        var seenIdentifiers = Set<String>()
 
-        for (index, screen) in NSScreen.screens.enumerated() {
+        for screen in NSScreen.screens {
             guard let wallpaperURL = wallpaperManager.desktopImageURL(for: screen),
-                  Self.isGeneratedWallpaperURL(wallpaperURL, in: cacheDirectoryURL) else {
+                  let identifier = Self.localIdentifier(inGeneratedWallpaperURL: wallpaperURL,
+                                                        in: cacheDirectoryURL),
+                  seenIdentifiers.insert(identifier).inserted else {
                 continue
             }
-            screenNumbers.insert(index + 1)
+            identifiers.append(identifier)
         }
 
-        debugLog("PhotoManager: \(screenNumbers.count) current screen wallpaper(s) are managed by Photos Wallpaper.")
-        return screenNumbers
+        debugLog("PhotoManager: found \(identifiers.count) identifiable current wallpaper(s) managed by Photos Wallpaper.")
+        return identifiers
     }
 
     static func isGeneratedWallpaperURL(_ wallpaperURL: URL, in cacheDirectoryURL: URL) -> Bool {
@@ -238,6 +242,21 @@ final class PhotoManager: PhotoManaging {
 
         let filename = standardizedWallpaperURL.lastPathComponent
         return filename.hasPrefix("current-wallpaper-") && filename.hasSuffix(".jpg")
+    }
+
+    static func localIdentifier(inGeneratedWallpaperURL wallpaperURL: URL,
+                                in cacheDirectoryURL: URL) -> String? {
+        guard isGeneratedWallpaperURL(wallpaperURL, in: cacheDirectoryURL) else { return nil }
+
+        let filename = wallpaperURL.lastPathComponent
+        guard let markerRange = filename.range(of: ".asset-", options: .backwards),
+              let extensionRange = filename.range(of: ".jpg", options: [.anchored, .backwards]),
+              markerRange.upperBound < extensionRange.lowerBound else {
+            return nil
+        }
+
+        let encodedIdentifier = String(filename[markerRange.upperBound..<extensionRange.lowerBound])
+        return decodeWallpaperIdentifier(encodedIdentifier)
     }
 
     /// Asks Photos to render the chosen asset at approximately the screen size we plan to use.
@@ -303,11 +322,15 @@ final class PhotoManager: PhotoManaging {
     ///
     /// `NSWorkspace` wants a file URL rather than raw image bytes, so this method materializes a
     /// JPEG file even though the image already exists in memory.
-    func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool {
+    func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool {
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let screenIdentifier = self.screenIdentifier(for: screen)
         let screenDescription = screenNumber.map { "display ID \($0)" } ?? "unknown display"
-        let wallpaperURL = wallpaperFileURL(forScreenIdentifier: screenIdentifier)
+        guard let wallpaperURL = wallpaperFileURL(forScreenIdentifier: screenIdentifier,
+                                                   assetLocalIdentifier: asset.localIdentifier) else {
+            debugLog("PhotoManager: could not create a wallpaper filename for \(screenDescription) because the Photos identifier was empty.")
+            return false
+        }
 
         // AppKit image conversion is a little old-school: NSImage -> TIFF -> bitmap rep -> JPEG.
         guard let tiffData = image.tiffRepresentation,
@@ -354,9 +377,40 @@ final class PhotoManager: PhotoManaging {
         return "unknown-\(Int(frame.origin.x))-\(Int(frame.origin.y))-\(Int(frame.width))x\(Int(frame.height))"
     }
 
-    private func wallpaperFileURL(forScreenIdentifier screenIdentifier: String) -> URL {
-        wallpaperCacheDirectoryURL()
-            .appendingPathComponent("current-wallpaper-\(screenIdentifier)-\(UUID().uuidString).jpg")
+    private func wallpaperFileURL(forScreenIdentifier screenIdentifier: String,
+                                  assetLocalIdentifier: String) -> URL? {
+        let identifier = assetLocalIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty else { return nil }
+        let encodedIdentifier = Self.encodeWallpaperIdentifier(identifier)
+        return wallpaperCacheDirectoryURL()
+            .appendingPathComponent(
+                "current-wallpaper-\(screenIdentifier)-\(UUID().uuidString).asset-\(encodedIdentifier).jpg")
+    }
+
+    private static func encodeWallpaperIdentifier(_ identifier: String) -> String {
+        Data(identifier.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func decodeWallpaperIdentifier(_ encodedIdentifier: String) -> String? {
+        var base64 = encodedIdentifier
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        guard remainder != 1 else { return nil }
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+
+        guard let data = Data(base64Encoded: base64),
+              let identifier = String(data: data, encoding: .utf8),
+              !identifier.isEmpty else {
+            return nil
+        }
+        return identifier
     }
 
     private func wallpaperCacheDirectoryURL() -> URL {
