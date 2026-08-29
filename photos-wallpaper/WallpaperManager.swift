@@ -2,9 +2,10 @@ import Foundation
 import AppKit
 import CoreGraphics
 
-/// Minimal abstraction over wallpaper writes so production code can use `NSWorkspace` and tests can
-/// swap in a fake.
+/// Minimal abstraction over wallpaper access so production code can use `NSWorkspace` and tests
+/// can swap in a fake.
 public protocol WallpaperManaging: AnyObject {
+    func desktopImageURL(for screen: NSScreen) -> URL?
     func setWallpaper(for displayID: CGDirectDisplayID,
                       to fileURL: URL,
                       options: WallpaperOptions) throws
@@ -67,6 +68,10 @@ public final class WallpaperManager: WallpaperManaging {
     private let workspace = NSWorkspace.shared
 
     public init() {}
+
+    public func desktopImageURL(for screen: NSScreen) -> URL? {
+        workspace.desktopImageURL(for: screen)
+    }
 
     public func setWallpaper(for displayID: CGDirectDisplayID,
                              to fileURL: URL,

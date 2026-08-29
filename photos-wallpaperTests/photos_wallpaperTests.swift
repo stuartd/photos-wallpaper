@@ -1978,6 +1978,7 @@ struct PhotosWallpaperTests {
                                       timestamp: timestamp)
 
         #expect(logger.currentWallpaperIdentifiersSnapshot() == ["FIRST-ID/L0/001", "SECOND-ID/L0/001"])
+        #expect(logger.currentWallpaperIdentifiersSnapshot(forScreenNumbers: [2]) == ["SECOND-ID/L0/001"])
 
         logger.recordWallpaperChange(photoName: "IMG_SINGLE.HEIC created 4 Jan 2024 at 12:00:00, id: SINGLE-ID/L0/001",
                                       screenName: "Screen 1",
@@ -2150,6 +2151,85 @@ struct PhotosWallpaperTests {
         #expect(result.alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
     }
 
+    @Test func currentWallpaperAlbumControllerDoesNotUseStaleIdentifierAfterWallpaperWasReplaced() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.managedWallpaperScreenNumbers = []
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(
+            historyLogger: logger,
+            photoManager: photoManager) { title, message in
+                alerts.append((title, message))
+            }
+        logger.recordWallpaperChange(
+            photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: STALE-ID/L0/001",
+            screenName: "Screen 1",
+            screenCount: 1,
+            timestamp: Date(timeIntervalSince1970: 0))
+
+        controller.addCurrentWallpapersToAlbum()
+        let didShowExplanation = await waitForCondition {
+            !alerts.isEmpty
+        }
+
+        #expect(didShowExplanation)
+        #expect(alerts.first?.title == "Current Wallpaper Not Set by Photos Wallpaper")
+        #expect(alerts.first?.message == "Photos Wallpaper can only add a wallpaper that it set. Choose Change Wallpaper Now, then try again.")
+        #expect(photoManager.batchLookupRequests.isEmpty)
+        #expect(photoManager.albumAddRequests.isEmpty)
+    }
+
+    @Test func currentWallpaperAlbumControllerKeepsOnlyDisplaysStillUsingManagedWallpapers() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let asset = makeFakeAsset()
+        let photoManager = FakePhotoManager(assetsToReturn: [asset])
+        photoManager.managedWallpaperScreenNumbers = [2]
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(
+            historyLogger: logger,
+            photoManager: photoManager) { title, message in
+                alerts.append((title, message))
+            }
+        let timestamp = Date(timeIntervalSince1970: 0)
+        logger.recordWallpaperChange(
+            photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: REPLACED-ID/L0/001",
+            screenName: "Screen 1",
+            screenCount: 2,
+            timestamp: timestamp)
+        logger.recordWallpaperChange(
+            photoName: "IMG_0002.HEIC created 1 Jan 2024 at 12:00:00, id: CURRENT-ID/L0/001",
+            screenName: "Screen 2",
+            screenCount: 2,
+            timestamp: timestamp)
+
+        controller.addCurrentWallpapersToAlbum()
+        let didShowConfirmation = await waitForCondition {
+            !alerts.isEmpty
+        }
+
+        #expect(didShowConfirmation)
+        #expect(photoManager.batchLookupRequests == [["CURRENT-ID/L0/001"]])
+        #expect(photoManager.albumAddRequests.map(ObjectIdentifier.init) == [ObjectIdentifier(asset)])
+    }
+
+    @Test func generatedWallpaperURLMustBeInsideTheWallpaperCache() {
+        let cacheURL = URL(fileURLWithPath: "/tmp/photos-wallpaper/.WallpaperCache", isDirectory: true)
+
+        #expect(PhotoManager.isGeneratedWallpaperURL(
+            cacheURL.appendingPathComponent("current-wallpaper-1-ABC.jpg"),
+            in: cacheURL))
+        #expect(!PhotoManager.isGeneratedWallpaperURL(
+            URL(fileURLWithPath: "/tmp/current-wallpaper-1-ABC.jpg"),
+            in: cacheURL))
+        #expect(!PhotoManager.isGeneratedWallpaperURL(
+            cacheURL.appendingPathComponent("ordinary-wallpaper.jpg"),
+            in: cacheURL))
+    }
+
     @Test func currentWallpaperAlbumControllerShowsMixedAddedAndAlreadyInAlbumConfirmation() async {
         let result = await currentWallpaperAlbumConfirmation(assetCount: 2,
                                                              albumAddResults: [.success(.added), .success(.alreadyInAlbum)])
@@ -2256,6 +2336,43 @@ struct PhotosWallpaperTests {
         #expect(alerts.first?.message == "Open the album in Photos to see the original and rediscover the moment around it.")
         #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"], ["ID-1/L0/001"]])
         #expect(photoManager.albumAddRequests.count == 1)
+    }
+
+    @Test func currentWallpaperAlbumControllerRevalidatesWallpaperAfterAuthorizationWait() async {
+        let logURL = temporaryTestDirectory().appendingPathComponent("wallpaper-history.log")
+        defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }
+        let logger = WallpaperHistoryLogger(logURL: logURL)
+        let photoManager = FakePhotoManager(assetsToReturn: [makeFakeAsset()])
+        photoManager.photoLookupOverride = .waitingForAuthorization
+        var alerts: [(title: String, message: String)] = []
+        let controller = CurrentWallpaperAlbumController(
+            historyLogger: logger,
+            photoManager: photoManager) { title, message in
+                alerts.append((title, message))
+            }
+        logger.recordWallpaperChange(
+            photoName: "IMG_0001.HEIC created 1 Jan 2024 at 12:00:00, id: ID-1/L0/001",
+            screenName: "Screen 1",
+            screenCount: 1,
+            timestamp: Date(timeIntervalSince1970: 0))
+
+        controller.addCurrentWallpapersToAlbum()
+        let didStartWaiting = await waitForCondition {
+            controller.isWaitingForAuthorization
+        }
+
+        #expect(didStartWaiting)
+        photoManager.managedWallpaperScreenNumbers = []
+        photoManager.photoLookupOverride = nil
+        photoManager.notifyPhotoAuthorizationDidChange()
+        let didShowExplanation = await waitForCondition {
+            !alerts.isEmpty
+        }
+
+        #expect(didShowExplanation)
+        #expect(alerts.first?.title == "Current Wallpaper Not Set by Photos Wallpaper")
+        #expect(photoManager.batchLookupRequests == [["ID-1/L0/001"]])
+        #expect(photoManager.albumAddRequests.isEmpty)
     }
 
     @Test func currentWallpaperAlbumControllerTracksAlertWhileConfirmationIsPresented() async {
@@ -2495,6 +2612,7 @@ private final class FakePhotoManager: PhotoManaging {
     var photoLookupOverride: PhotoAssetsLookupResult?
     var albumAddResults: [Result<PhotosWallpaperAlbumAddResult, Error>] = []
     var shouldSucceedSettingWallpaper = true
+    var managedWallpaperScreenNumbers = Set(1...100)
 
     init(assetsToReturn: [PHAsset]? = nil,
          assetNames: [String]? = nil,
@@ -2593,6 +2711,10 @@ private final class FakePhotoManager: PhotoManaging {
         } else {
             pendingImageCompletions.append(completion)
         }
+    }
+
+    func managedCurrentWallpaperScreenNumbers() -> Set<Int> {
+        managedWallpaperScreenNumbers
     }
 
     func completePendingImageRequests() {

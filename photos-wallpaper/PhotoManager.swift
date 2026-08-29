@@ -57,6 +57,7 @@ protocol PhotoManaging: AnyObject {
     func displayName(for asset: PHAsset) -> String
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
+    func managedCurrentWallpaperScreenNumbers() -> Set<Int>
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, for screen: NSScreen) -> Bool
@@ -207,6 +208,36 @@ final class PhotoManager: PhotoManaging {
         case .unavailable:
             return .unavailable
         }
+    }
+
+    /// Returns the one-based screen numbers whose current desktop image is still a file generated
+    /// by Photos Wallpaper. Persisted Photos identifiers are only reliable while those files remain
+    /// active; macOS or the user may have replaced a desktop since the app last ran.
+    func managedCurrentWallpaperScreenNumbers() -> Set<Int> {
+        let cacheDirectoryURL = wallpaperCacheDirectoryURL()
+        var screenNumbers = Set<Int>()
+
+        for (index, screen) in NSScreen.screens.enumerated() {
+            guard let wallpaperURL = wallpaperManager.desktopImageURL(for: screen),
+                  Self.isGeneratedWallpaperURL(wallpaperURL, in: cacheDirectoryURL) else {
+                continue
+            }
+            screenNumbers.insert(index + 1)
+        }
+
+        debugLog("PhotoManager: \(screenNumbers.count) current screen wallpaper(s) are managed by Photos Wallpaper.")
+        return screenNumbers
+    }
+
+    static func isGeneratedWallpaperURL(_ wallpaperURL: URL, in cacheDirectoryURL: URL) -> Bool {
+        let standardizedWallpaperURL = wallpaperURL.standardizedFileURL
+        let standardizedCacheDirectoryURL = cacheDirectoryURL.standardizedFileURL
+        guard standardizedWallpaperURL.deletingLastPathComponent() == standardizedCacheDirectoryURL else {
+            return false
+        }
+
+        let filename = standardizedWallpaperURL.lastPathComponent
+        return filename.hasPrefix("current-wallpaper-") && filename.hasSuffix(".jpg")
     }
 
     /// Asks Photos to render the chosen asset at approximately the screen size we plan to use.

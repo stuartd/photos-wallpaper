@@ -62,8 +62,8 @@ enum CurrentWallpaperAlbumResultPresenter {
                 primaryAction: photoCountInAlbum > 0 ? .openAlbum : nil)
         case .noRememberedWallpapers:
             return CurrentWallpaperAlbumResultPresentation(
-                title: "No Current Wallpapers Yet",
-                message: "Photos Wallpaper can’t add current wallpapers to the album until it has set the wallpaper at least once since startup.")
+                title: "Current Wallpaper Not Set by Photos Wallpaper",
+                message: "Photos Wallpaper can only add a wallpaper that it set. Choose Change Wallpaper Now, then try again.")
         case .noWallpaperSetThisSession:
             return CurrentWallpaperAlbumResultPresentation(
                 title: "No Wallpaper Set This Session",
@@ -338,7 +338,7 @@ struct CurrentWallpaperAlbumAdder {
         showsResultAlert: Bool = true,
         completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)? = nil
     ) {
-        let identifiers = historyLogger.currentWallpaperIdentifiersSnapshot()
+        let identifiers = currentManagedWallpaperIdentifiers()
         addWallpapersToAlbum(withLocalIdentifiers: identifiers,
                             showsResultAlert: showsResultAlert,
                             completion: completion)
@@ -353,9 +353,19 @@ struct CurrentWallpaperAlbumAdder {
             return
         }
 
-        addWallpapersToAlbum(withLocalIdentifiers: identifiers,
+        addWallpapersToAlbum(withLocalIdentifiers: identifiersStillCurrent(identifiers),
                             showsResultAlert: false,
                             completion: completion)
+    }
+
+    private func currentManagedWallpaperIdentifiers() -> [String] {
+        historyLogger.currentWallpaperIdentifiersSnapshot(
+            forScreenNumbers: photoManager.managedCurrentWallpaperScreenNumbers())
+    }
+
+    private func identifiersStillCurrent(_ identifiers: [String]) -> [String] {
+        let currentIdentifiers = Set(currentManagedWallpaperIdentifiers())
+        return identifiers.filter { currentIdentifiers.contains($0) }
     }
 
     private func addWallpapersToAlbum(
@@ -394,7 +404,7 @@ struct CurrentWallpaperAlbumAdder {
 
         debugLog("CurrentWallpaperAlbumController: retrying \(requests.count) album request(s) after Photos authorization changed.")
         for request in requests {
-            addWallpapersToAlbum(withLocalIdentifiers: request.identifiers,
+            addWallpapersToAlbum(withLocalIdentifiers: identifiersStillCurrent(request.identifiers),
                                 showsResultAlert: request.showsResultAlert,
                                 completion: request.completion)
         }

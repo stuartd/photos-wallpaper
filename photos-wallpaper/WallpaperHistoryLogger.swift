@@ -498,6 +498,16 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 
+    func currentWallpaperIdentifiersSnapshot(forScreenNumbers screenNumbers: Set<Int>) -> [String] {
+        writeQueue.sync {
+            let identifiersByScreen = currentWallpaperIdentifiersByScreen.filter { screenName, _ in
+                guard let screenNumber = Self.screenNumber(in: screenName) else { return false }
+                return screenNumbers.contains(screenNumber)
+            }
+            return identifiersSnapshot(from: identifiersByScreen)
+        }
+    }
+
     func currentSessionWallpaperIdentifiersSnapshot() -> [String] {
         writeQueue.sync {
             identifiersSnapshot(from: currentSessionWallpaperIdentifiersByScreen)
