@@ -9,6 +9,23 @@ enum CurrentWallpaperAlbumAdditionResult: Equatable {
     case waitingForAuthorization
     case permissionDenied
     case unavailable
+
+    var logDescription: String {
+        switch self {
+        case .added(let addedCount, let alreadyInAlbumCount, let missingIdentifierCount, let failedAddCount):
+            return "added: \(addedCount), already in album: \(alreadyInAlbumCount), missing: \(missingIdentifierCount), failed: \(failedAddCount)"
+        case .noRememberedWallpapers:
+            return "no current wallpapers set by Photos Wallpaper"
+        case .noWallpaperSetThisSession:
+            return "no wallpaper set in this session"
+        case .waitingForAuthorization:
+            return "waiting for Photos authorization"
+        case .permissionDenied:
+            return "Photos permission denied"
+        case .unavailable:
+            return "Photos unavailable"
+        }
+    }
 }
 
 enum CurrentWallpaperAlbumAlertAction: Equatable {
@@ -39,16 +56,16 @@ struct CurrentWallpaperAlbumResultPresentation: Equatable {
 }
 
 enum CurrentWallpaperAlbumStrings {
-    static let addedTitle = "Added to Photos Wallpaper"
-    static let alreadyInAlbumTitle = "Already in Photos Wallpaper"
+    static let addedTitle = "Added to the Photos Wallpaper album"
+    static let alreadyInAlbumTitle = "Already in the Photos Wallpaper album"
     static let openAlbumButtonTitle = "Open Album"
 
     static let currentWallpaperNotSetTitle = "The current wallpaper was not set by Photos Wallpaper"
-    static let currentWallpaperNotSetMessage = "Photos Wallpaper can only add a wallpaper that it set to the album."
+    static let currentWallpaperNotSetMessage = "Only wallpapers set by Photos Wallpaper can be added to the album."
     static let noWallpaperSetThisSessionTitle = "No wallpaper set in this session"
-    static let noWallpaperSetThisSessionMessage = "Photos Wallpaper can’t run this script until it has set the wallpaper at least once since startup."
+    static let noWallpaperSetThisSessionMessage = "Photos Wallpaper has not set a wallpaper since it launched, so there is nothing to add."
     static let photosAccessNeededTitle = "Photos access needed"
-    static let waitingForPhotosAccessMessage = "Photos Wallpaper is waiting for permission to read your Photos library. Try again after approving access."
+    static let waitingForPhotosAccessMessage = "Approve the Photos access request to continue."
     static let photosAccessDeniedMessage = "Enable Photos access in System Settings > Privacy & Security > Photos, then try again."
     static let photosUnavailableTitle = "Photos unavailable"
     static let photosUnavailableMessage = "Photos Wallpaper could not search your Photos library right now."
@@ -299,7 +316,7 @@ struct CurrentWallpaperAlbumAdder {
                 nextAlreadyInAlbumCount = alreadyInAlbumCount + 1
                 nextFailedAddCount = failedAddCount
             case .failure(let error):
-                debugLog("CurrentWallpaperAlbumAdder: failed to add current wallpaper \(index + 1) to album: \(error)")
+                debugLog("CurrentWallpaperAlbumAdder: failed to add current wallpaper \(index + 1) to the Photos Wallpaper album: \(error).")
                 nextAddedCount = addedCount
                 nextAlreadyInAlbumCount = alreadyInAlbumCount
                 nextFailedAddCount = failedAddCount + 1

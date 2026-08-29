@@ -37,7 +37,7 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
     func notifyNoPhotosAvailable() {
         queueNotification(identifier: "no-photos-available-\(UUID().uuidString)",
                           title: "No photos available",
-                          body: "Photos Wallpaper can't set your wallpaper because no photos are available.")
+                          body: "Photos Wallpaper couldn’t find an available photo in your Photos library.")
     }
 
     func notifyPhotoLibraryPermissionDenied() {
@@ -107,12 +107,12 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
 
     private func logNotificationSettings(context: String) async {
         let settings = await center.notificationSettings()
-        debugLog("UserNotificationWallpaperCycleNotifier: notification settings \(context): authorization=\(Self.description(for: settings.authorizationStatus)), alerts=\(Self.description(for: settings.alertSetting)), sounds=\(Self.description(for: settings.soundSetting)).")
+        debugLog("UserNotificationWallpaperCycleNotifier: notification settings (\(context)): authorization=\(Self.description(for: settings.authorizationStatus)), alerts=\(Self.description(for: settings.alertSetting)), sounds=\(Self.description(for: settings.soundSetting)).")
     }
 
     private static func description(for status: UNAuthorizationStatus) -> String {
         switch status {
-        case .notDetermined: return "notDetermined"
+        case .notDetermined: return "not determined"
         case .denied: return "denied"
         case .authorized: return "authorized"
         case .provisional: return "provisional"
@@ -123,7 +123,7 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
 
     private static func description(for setting: UNNotificationSetting) -> String {
         switch setting {
-        case .notSupported: return "notSupported"
+        case .notSupported: return "not supported"
         case .disabled: return "disabled"
         case .enabled: return "enabled"
         @unknown default: return "unknown(\(setting.rawValue))"
@@ -392,7 +392,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 
     private var option: Option {
         guard let option = Self.options.first(where: { $0.frequency == self }) else {
-            preconditionFailure("Missing cycle frequency option for \(self).")
+            preconditionFailure("The cycle frequency options are out of sync.")
         }
         return option
     }
@@ -1024,10 +1024,10 @@ enum WallpaperPhotoSelector {
 
         var logDescription: String {
             switch self {
-            case .manual: return "manual trigger"
-            case .login: return "login trigger"
-            case .unlock: return "unlock trigger"
-            case .scheduled: return "scheduled trigger"
+            case .manual: return "manual"
+            case .login: return "login"
+            case .unlock: return "unlock"
+            case .scheduled: return "scheduled"
             }
         }
     }
@@ -1039,9 +1039,9 @@ enum WallpaperPhotoSelector {
     private func tick(trigger: WallpaperCycleTrigger) {
         if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
             if deferScheduledCycleIfNeeded(trigger: trigger) {
-                debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
+                debugLog("WallpaperCycleController: skipping \(trigger.logDescription) wallpaper cycle because this app's user session is not the active console session.")
             } else if trigger != .scheduled {
-                debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because this app's user session is not the active console session.")
+                debugLog("WallpaperCycleController: skipping \(trigger.logDescription) wallpaper cycle because this app's user session is not the active console session.")
             }
             return
         }
@@ -1062,7 +1062,7 @@ enum WallpaperPhotoSelector {
         guard shouldRunAutomaticLoginCycle(trigger: trigger) else { return }
         clearDeferredScheduledCycleIfNeeded(trigger: trigger)
         isCycleInProgress = true
-        debugLog("WallpaperCycleController: starting wallpaper cycle for \(trigger.logDescription).")
+        debugLog("WallpaperCycleController: starting \(trigger.logDescription) wallpaper cycle.")
         let screens = screenProvider.screens
         debugLog("WallpaperCycleController: found \(screens.count) screen(s).")
         guard !screens.isEmpty else {
@@ -1137,7 +1137,7 @@ enum WallpaperPhotoSelector {
                         }
                     }
                 } else {
-                    debugLog("WallpaperCycleController: image request \(index + 1) returned nil.")
+                    debugLog("WallpaperCycleController: image request \(index + 1) returned no image.")
                 }
             }
         }
@@ -1161,7 +1161,7 @@ enum WallpaperPhotoSelector {
         guard !hasLoggedDeferredScheduledCycle else { return false }
         hasLoggedDeferredScheduledCycle = true
         storeNextScheduledCycleDueAt(Date())
-        debugLog("WallpaperCycleController: deferred scheduled cycle until the app is active again.")
+        debugLog("WallpaperCycleController: deferred scheduled cycle until this app's user session becomes active.")
         return true
     }
 
@@ -1264,7 +1264,7 @@ enum WallpaperPhotoSelector {
         let now = Date()
         if let lastAutomaticLoginCycleStartedAt,
            now.timeIntervalSince(lastAutomaticLoginCycleStartedAt) < Self.automaticLoginCycleDebounceInterval {
-            debugLog("WallpaperCycleController: skipping automatic cycle \(trigger.logDescription) because another automatic login cycle ran recently.")
+            debugLog("WallpaperCycleController: skipping \(trigger.logDescription) wallpaper cycle because another automatic login cycle ran recently.")
             return false
         }
 
@@ -1274,7 +1274,7 @@ enum WallpaperPhotoSelector {
 
     private func scheduleWakeReadinessRetryTimer() {
         guard wakeCatchUpTimer == nil else { return }
-        debugLog("WallpaperCycleController: scheduling overdue wallpaper readiness retry after wake.")
+        debugLog("WallpaperCycleController: scheduling another screen-readiness check after wake.")
         wakeCatchUpTimer = timerScheduler.scheduledTimer(interval: Self.wakeCatchUpReadinessRetryDelay, repeats: false) { [weak self] in
             Task { @MainActor [weak self] in
                 self?.wakeCatchUpTimer = nil
@@ -1340,12 +1340,21 @@ enum WallpaperPhotoSelector {
     private enum UnavailablePhotosReason {
         case noPhotosAvailable
         case permissionDenied
+
+        var logDescription: String {
+            switch self {
+            case .noPhotosAvailable:
+                return "no photos available"
+            case .permissionDenied:
+                return "Photos permission denied"
+            }
+        }
     }
 
     private func notifyUnavailablePhotos(reason: UnavailablePhotosReason, trigger: WallpaperCycleTrigger) {
         if !trigger.shouldAlwaysNotifyUnavailablePhotos {
             guard lastAutomaticUnavailablePhotosReason != reason else {
-                debugLog("WallpaperCycleController: photo library unavailable for \(reason), automatic notification already shown.")
+                debugLog("WallpaperCycleController: Photos library unavailable (\(reason.logDescription)); the automatic user message was already shown.")
                 return
             }
             lastAutomaticUnavailablePhotosReason = reason
@@ -1353,10 +1362,10 @@ enum WallpaperPhotoSelector {
 
         switch reason {
         case .noPhotosAvailable:
-            debugLog("WallpaperCycleController: no photo assets available, posting notification.")
+            debugLog("WallpaperCycleController: no photo assets are available; showing a notification.")
             notifier.notifyNoPhotosAvailable()
         case .permissionDenied:
-            debugLog("WallpaperCycleController: Photos permission denied, posting notification.")
+            debugLog("WallpaperCycleController: Photos permission is denied; showing an alert.")
             notifier.notifyPhotoLibraryPermissionDenied()
         }
     }

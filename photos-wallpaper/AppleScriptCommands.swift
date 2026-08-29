@@ -52,7 +52,7 @@ final class AddCurrentWallpaperToPhotosWallpaperAlbumCommand: NSScriptCommand {
         suspendExecution()
 
         let didStart = AppleScriptCommandCoordinator.shared.addCurrentWallpapersToPhotosWallpaperAlbum { [self] result in
-            debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album request completed with \(result).")
+            debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album request completed (\(result.logDescription)).")
             let response = AddCurrentWallpaperScriptResponse(additionResult: result)
             resumeExecutionOnNextMainQueueTurn(
                 withResult: response.result,
@@ -61,11 +61,11 @@ final class AddCurrentWallpaperToPhotosWallpaperAlbumCommand: NSScriptCommand {
         }
 
         guard didStart else {
-            debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album controller was not ready.")
+            debugLog("AddCurrentWallpaperToPhotosWallpaperAlbumCommand: album controller has not been configured yet.")
             resumeExecutionOnNextMainQueueTurn(
                 withResult: nil,
                 errorNumber: NSInternalScriptError,
-                errorMessage: "Photos Wallpaper is not ready to add the current wallpaper.")
+                errorMessage: "Photos Wallpaper is still starting. Try the command again.")
             return nil
         }
 

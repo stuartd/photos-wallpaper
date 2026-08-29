@@ -107,15 +107,20 @@ final class PhotoManager: PhotoManaging {
             return .unavailable
         }
 
+        guard !displayOrientations.isEmpty else {
+            debugLog("PhotoManager: cannot select photos because no display orientations were provided.")
+            return .unavailable
+        }
+
         let photosCount = allPhotos?.count ?? 0
-        guard !displayOrientations.isEmpty, let allPhotos, photosCount > 0 else {
-            debugLog("PhotoManager: no photos available for \(displayOrientations.count) screen(s). Library count: \(photosCount).")
+        guard let allPhotos, photosCount > 0 else {
+            debugLog("PhotoManager: cannot select photos because the Photos library has no available image assets.")
             return .unavailable
         }
         debugLog("PhotoManager: selecting photos for \(displayOrientations.count) screen(s) from \(photosCount) library asset(s).")
         let selectedIndexes = selectedPhotoIndexes(for: displayOrientations, allPhotos: allPhotos)
         let selectedPhotos = selectedIndexes.map { allPhotos.object(at: $0) }
-        debugLog("PhotoManager: returning \(selectedPhotos.count) photo asset(s).")
+        debugLog("PhotoManager: selected \(selectedPhotos.count) photo asset(s).")
         return .photos(selectedPhotos)
     }
 
@@ -164,10 +169,10 @@ final class PhotoManager: PhotoManaging {
         switch findPhotos(localIdentifiers: [trimmedIdentifier]) {
         case .photos(let assets, _):
             guard let asset = assets.first else {
-                debugLog("PhotoManager: no Photos asset found for history identifier \(trimmedIdentifier).")
+                debugLog("PhotoManager: no Photos asset matched local identifier \(trimmedIdentifier).")
                 return .notFound
             }
-            debugLog("PhotoManager: found Photos asset for history identifier \(trimmedIdentifier).")
+            debugLog("PhotoManager: found a Photos asset for local identifier \(trimmedIdentifier).")
             return .photo(asset)
         case .waitingForAuthorization:
             return .waitingForAuthorization
@@ -196,9 +201,9 @@ final class PhotoManager: PhotoManaging {
 
             let assets = trimmedIdentifiers.compactMap { assetsByIdentifier[$0] }
             let missingIdentifierCount = trimmedIdentifiers.count - assets.count
-            debugLog("PhotoManager: found \(assets.count) Photos asset(s) for \(trimmedIdentifiers.count) history identifier(s).")
+            debugLog("PhotoManager: matched \(assets.count) of \(trimmedIdentifiers.count) requested Photos local identifier(s).")
             if missingIdentifierCount > 0 {
-                debugLog("PhotoManager: \(missingIdentifierCount) history identifier(s) were not found in Photos.")
+                debugLog("PhotoManager: \(missingIdentifierCount) requested Photos local identifier(s) did not match an asset.")
             }
             return .photos(assets, missingIdentifierCount: missingIdentifierCount)
         case .waitingForAuthorization:
@@ -274,7 +279,11 @@ final class PhotoManager: PhotoManaging {
         options.isNetworkAccessAllowed = true
 
         PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
-            debugLog("PhotoManager: image request for asset \(asset.localIdentifier) completed with image: \(image != nil).")
+            if image == nil {
+                debugLog("PhotoManager: image request for asset \(asset.localIdentifier) returned no image.")
+            } else {
+                debugLog("PhotoManager: image request for asset \(asset.localIdentifier) returned an image.")
+            }
             completion(image)
         }
     }
@@ -353,10 +362,10 @@ final class PhotoManager: PhotoManaging {
                 removeStaleWallpaperCacheFiles()
                 removeLegacyWallpaperCacheFiles()
             }
-            debugLog("PhotoManager: wallpaper applied successfully to \(screenDescription).")
+            debugLog("PhotoManager: set the wallpaper on \(screenDescription).")
             return true
         } catch {
-            debugLog("PhotoManager: failed to set wallpaper on \(screenDescription): \(error)")
+            debugLog("PhotoManager: failed to set the wallpaper on \(screenDescription): \(error).")
             return false
         }
     }
@@ -593,7 +602,7 @@ final class PhotoManager: PhotoManaging {
         case .restricted:
             return "restricted"
         case .notDetermined:
-            return "notDetermined"
+            return "not determined"
         @unknown default:
             return "unknown"
         }

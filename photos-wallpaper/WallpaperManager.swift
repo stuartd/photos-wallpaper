@@ -24,9 +24,12 @@ public enum WallpaperError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .screenNotFound:
-            return "Screen not found for the specified display."
+            return "No screen was found for the specified display."
         case .setFailed(let underlying):
-            return "Failed to set wallpaper" + (underlying != nil ? ": \(underlying!)" : ".")
+            if let underlying {
+                return "The wallpaper could not be set: \(underlying.localizedDescription)"
+            }
+            return "The wallpaper could not be set."
         }
     }
 }

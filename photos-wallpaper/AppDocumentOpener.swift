@@ -103,13 +103,13 @@ final class AppDocumentOpener: AppDocumentOpening {
 
         // Locate the PRIVACY.md in the app bundle
         guard let privacyURL = Bundle.main.url(forResource: "PRIVACY", withExtension: "md") else {
-            debugLog("AppDocumentOpener: PRIVACY.md not found in bundle")
+            debugLog("AppDocumentOpener: PRIVACY.md was not found in the app bundle.")
             return
         }
 
         // Attempt to load the markdown text
         guard let markdownText = try? String(contentsOf: privacyURL, encoding: .utf8) else {
-            debugLog("AppDocumentOpener: failed to load PRIVACY.md contents")
+            debugLog("AppDocumentOpener: failed to read PRIVACY.md from the app bundle.")
             return
         }
 
@@ -166,7 +166,7 @@ final class AppDocumentOpener: AppDocumentOpening {
 
     func openSupportPage() {
         guard urlOpener.open(Self.supportURL) else {
-            debugLog("AppDocumentOpener: failed to open support URL \(Self.supportURL.absoluteString)")
+            debugLog("AppDocumentOpener: failed to open the support URL \(Self.supportURL.absoluteString).")
             return
         }
     }

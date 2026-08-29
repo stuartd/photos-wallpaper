@@ -387,7 +387,7 @@ final class AppRuntimeLogger {
             }
         } catch {
             #if DEBUG
-            print("AppRuntimeLogger: failed to open runtime log: \(error)")
+            print("AppRuntimeLogger: failed to open the runtime log: \(error).")
             #endif
         }
     }
@@ -404,7 +404,7 @@ final class AppRuntimeLogger {
             try logFile.append(text)
         } catch {
             #if DEBUG
-            print("AppRuntimeLogger: failed to write runtime log: \(error)")
+            print("AppRuntimeLogger: failed to write to the runtime log: \(error).")
             #endif
         }
     }
@@ -414,7 +414,7 @@ final class AppRuntimeLogger {
             try logFile.reset()
         } catch {
             #if DEBUG
-            print("AppRuntimeLogger: failed to reset runtime log: \(error)")
+            print("AppRuntimeLogger: failed to reset the runtime log: \(error).")
             #endif
         }
     }
@@ -574,7 +574,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
                                                            dateFormatter: dateFormatter) + "\n"
             try logFile.append(line)
         } catch {
-            debugLog("WallpaperHistoryLogger: failed to write history entry: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to write a history entry: \(error).")
         }
     }
 
@@ -582,7 +582,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         do {
             try logFile.reset()
         } catch {
-            debugLog("WallpaperHistoryLogger: failed to reset history log: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to reset the history log: \(error).")
         }
     }
 
@@ -600,7 +600,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             }
             currentWallpaperIdentifiersByScreen = identifiersByScreen
         } catch {
-            debugLog("WallpaperHistoryLogger: failed to load current wallpaper identifiers: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to load the current wallpaper identifiers: \(error).")
         }
     }
 
@@ -617,7 +617,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             let data = try JSONEncoder().encode(wallpapers)
             try data.write(to: currentWallpapersURL, options: .atomic)
         } catch {
-            debugLog("WallpaperHistoryLogger: failed to persist current wallpaper identifiers: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to save the current wallpaper identifiers: \(error).")
         }
     }
 
@@ -630,7 +630,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
             }
             historyWindow.show(Self.displayText(for: historyText))
         } catch {
-            debugLog("WallpaperHistoryLogger: failed to open history log: \(error)")
+            debugLog("WallpaperHistoryLogger: failed to open the history log: \(error).")
         }
     }
 
