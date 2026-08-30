@@ -18,10 +18,11 @@ extension PhotosWallpaperTests {
         #expect(defaults.bool(forKey: "didShowMenuBarWelcomeWindow"))
     }
 
-    @Test func firstRunWelcomeExplainsHowToRediscoverTheCurrentWallpaper() {
-        #expect(AppKitFirstRunWelcomePresenter.welcomeTitle == "Rediscover your photos")
-        #expect(AppKitFirstRunWelcomePresenter.welcomeMessage == "Photos Wallpaper puts random photos from your library on your desktop. Use the photo icon in the menu bar to set a schedule. When one catches your eye—for any reason—choose Find Current Wallpaper in Photos to add it to the Photos Wallpaper album and rediscover the moment around it.")
-        #expect(photos_wallpaperApp.findCurrentWallpaperMenuTitle == "Find Current Wallpaper in Photos…")
+    @Test func firstRunWelcomeReferencesFindCurrentWallpaperMenuCommand() {
+        let menuTitle = photos_wallpaperApp.findCurrentWallpaperMenuTitle
+            .trimmingCharacters(in: .punctuationCharacters)
+
+        #expect(AppKitFirstRunWelcomePresenter.welcomeMessage.contains(menuTitle))
     }
 
     @Test func firstRunNotifierSkipsMenuBarWelcomeWindowAfterPreviousRun() {

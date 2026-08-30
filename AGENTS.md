@@ -67,6 +67,7 @@ scripts/create-local-release.sh
 - Preserve `@MainActor` boundaries for UI, AppKit, and controller state. Be careful when adding async callbacks from Photos or notification APIs.
 - Use `debugLog(...)` for operational diagnostics rather than raw `print`, except for debug-only local experiments.
 - Keep user-facing text plain, specific, and consistent with the existing menu copy.
+- Define each piece of user-facing copy in one production location. Tests should reference the centralized value or verify its semantic relationship to other copy instead of repeating the full string literal.
 - Ideally do not change privacy-relevant behaviour at all. If it is necessary and has been approved, update `photos-wallpaper/PRIVACY.md` in the same change.
 - Keep comments useful for Swift/macOS context. Existing comments intentionally explain Apple-framework concepts for readers who may not know Swift or Xcode well.
 

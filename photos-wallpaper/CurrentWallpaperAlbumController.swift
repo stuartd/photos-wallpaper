@@ -70,8 +70,8 @@ enum CurrentWallpaperAlbumStrings {
     static let photosUnavailableTitle = "Photos unavailable"
     static let photosUnavailableMessage = "Photos Wallpaper could not search your Photos library right now."
 
-    static let singlePhotoRediscoveryMessage = "Open the album in Photos to see the original and rediscover the moment around it."
-    static let multiplePhotoRediscoveryMessage = "Open the album in Photos to see the originals and rediscover the moments around them."
+    static let singlePhotoRediscoveryMessage = "In the album, right-click the wallpaper photo and choose Show in All Photos to see the photos around it."
+    static let multiplePhotoRediscoveryMessage = "In the album, right-click a wallpaper photo and choose Show in All Photos to see the photos around it."
     static let noPhotosAddedMessage = "No wallpaper photos were added to the Photos Wallpaper album."
     static let singlePhotoAddedMessage = "Added the wallpaper photo to the Photos Wallpaper album."
     static let twoPhotosAddedMessage = "Added both wallpaper photos to the Photos Wallpaper album."
