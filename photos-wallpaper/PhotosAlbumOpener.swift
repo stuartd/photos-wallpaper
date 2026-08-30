@@ -27,6 +27,14 @@ final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
     }
 
     func openPhotosWallpaperAlbum() -> Bool {
+        // Opening the application sends the same kind of request as choosing Photos from the
+        // Dock. Unlike AppleScript's `activate`, it also gives a minimized Photos window a chance
+        // to return to the screen. Run the album script afterwards so the requested album remains
+        // the final selection.
+        if !openApplication() {
+            debugLog("AppKitPhotosAlbumOpener: could not bring Photos forward before selecting the album.")
+        }
+
         let source = """
         tell application "/System/Applications/Photos.app"
             set matchingAlbums to every album whose name is "\(Self.albumTitle)"
@@ -74,6 +82,14 @@ final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
             debugLog("AppKitPhotosAlbumOpener: Photos application URL was not available.")
             return false
         }
-        return NSWorkspace.shared.open(photosURL)
+
+        let didOpen = NSWorkspace.shared.open(photosURL)
+        if didOpen,
+           let photosApplication = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Photos").first,
+           !photosApplication.activate(options: [.activateAllWindows]) {
+            debugLog("AppKitPhotosAlbumOpener: Photos did not accept the request to bring all windows forward.")
+        }
+        return didOpen
     }
 }

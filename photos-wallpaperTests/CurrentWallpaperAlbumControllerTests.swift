@@ -273,12 +273,15 @@ extension PhotosWallpaperTests {
     @Test func photosAlbumOpenerTargetsThePhotosWallpaperAlbum() {
         var executedScripts: [String] = []
         var openPhotosCallCount = 0
+        var invocations: [String] = []
         let opener = AppKitPhotosAlbumOpener(
             runAppleScript: { source in
+                invocations.append("select album")
                 executedScripts.append(source)
                 return true
             },
             openApplication: {
+                invocations.append("open application")
                 openPhotosCallCount += 1
                 return true
             })
@@ -288,10 +291,11 @@ extension PhotosWallpaperTests {
         #expect(executedScripts[0].contains("tell application \"/System/Applications/Photos.app\""))
         #expect(executedScripts[0].contains("every album whose name is \"Photos Wallpaper\""))
         #expect(executedScripts[0].contains("spotlight item 1 of matchingAlbums"))
-        #expect(openPhotosCallCount == 0)
+        #expect(openPhotosCallCount == 1)
+        #expect(invocations == ["open application", "select album"])
 
         #expect(opener.openPhotosApplication())
-        #expect(openPhotosCallCount == 1)
+        #expect(openPhotosCallCount == 2)
     }
 
     @Test func currentWallpaperAlbumControllerRetriesAfterPhotosAuthorizationIsGranted() async {
