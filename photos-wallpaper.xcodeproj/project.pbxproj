@@ -370,7 +370,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14;
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rosehillsolutions.photoswallpaper;
 				PRODUCT_MODULE_NAME = photos_wallpaper;
 				PRODUCT_NAME = "Photos Wallpaper";
@@ -425,7 +425,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14;
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rosehillsolutions.photoswallpaper;
 				PRODUCT_MODULE_NAME = photos_wallpaper;
 				PRODUCT_NAME = "Photos Wallpaper";

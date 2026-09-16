@@ -147,6 +147,7 @@ struct photos_wallpaperApp: App {
                 prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
             }
+            .keyboardShortcut("w", modifiers: [.command, .option])
             .disabled(isMenuInteractionDisabled)
 
             Picker("Set Schedule", selection: frequencyBinding) {
