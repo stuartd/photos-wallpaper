@@ -206,13 +206,15 @@ final class MenuShortcutView: NSView {
     }
 
     override var isFlipped: Bool { true }
-    override var allowsVibrancy: Bool { true }
+    // Draw the selection and its text without vibrancy so the wallpaper behind the
+    // translucent menu cannot wash out the system selection colour.
+    override var allowsVibrancy: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let item else { return }
         let highlighted = item.isEnabled && (item.isHighlighted || isHovered)
         if highlighted {
-            NSColor.selectedContentBackgroundColor.setFill()
+            NSColor.selectedContentBackgroundColor.withAlphaComponent(1).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0),
                          xRadius: 4, yRadius: 4).fill()
         }
