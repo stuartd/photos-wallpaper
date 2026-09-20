@@ -12,11 +12,15 @@ final class GlobalHotKeyController {
     private var eventHandler: EventHandlerRef?
     private var hotKey: EventHotKeyRef?
     private let action: () -> Void
+    private let keyCode: UInt32
+    private let modifiers: UInt32
 
     private(set) var isRegistered = false
 
     init(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
         self.action = action
+        self.keyCode = keyCode
+        self.modifiers = modifiers
         installEventHandler()
         registerHotKey(keyCode: keyCode, modifiers: modifiers)
     }
@@ -30,14 +34,29 @@ final class GlobalHotKeyController {
         }
     }
 
+    func setMenuTracking(_ isTracking: Bool) {
+        if isTracking {
+            if let hotKey {
+                UnregisterEventHotKey(hotKey)
+                self.hotKey = nil
+            }
+        } else if hotKey == nil {
+            registerHotKey(keyCode: keyCode, modifiers: modifiers)
+            if !isRegistered {
+                debugLog("GlobalHotKeyController: could not restore shortcut after menu tracking.")
+            }
+        }
+    }
+
     private func installEventHandler() {
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
 
+        // Menu tracking temporarily uses raw AppKit key events instead of Carbon hotkeys.
         InstallEventHandler(
-            GetApplicationEventTarget(),
+            GetEventDispatcherTarget(),
             { _, event, userData in
                 guard let event, let userData else { return noErr }
 
@@ -81,7 +100,7 @@ final class GlobalHotKeyController {
             keyCode,
             modifiers,
             hotKeyID,
-            GetApplicationEventTarget(),
+            GetEventDispatcherTarget(),
             0,
             &hotKey
         )

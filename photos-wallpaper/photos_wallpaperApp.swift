@@ -97,6 +97,7 @@ final class FirstRunStartupController: ObservableObject {
 /// - `Binding`: a two-way value connection, so UI changes update the model and model changes update
 ///   the UI.
 struct photos_wallpaperApp: App {
+    static let changeWallpaperMenuTitle = "Change Wallpaper Now"
     static let findCurrentWallpaperMenuTitle = "Find Current Wallpaper in Photos…"
 
     /// Retains the POSIX lock for the app lifetime.
@@ -112,6 +113,7 @@ struct photos_wallpaperApp: App {
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
     private let changeWallpaperHotKeyController: GlobalHotKeyController
+    private let changeWallpaperMenuAppearance: MenuShortcutAppearance
 
     init() {
         self.singleInstanceLock = Self.acquireSingleInstanceLock()
@@ -120,6 +122,12 @@ struct photos_wallpaperApp: App {
         let historyLogger = WallpaperHistoryLogger()
         let currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         let cycleController = WallpaperCycleController(historyLogger: historyLogger)
+        let menuAppearance = MenuShortcutAppearance(
+            title: Self.changeWallpaperMenuTitle, shortcut: "⌃⌥W") { [weak firstRunStartupController, weak cycleController] in
+                firstRunStartupController?.dismissWelcomeIfPresented()
+                cycleController?.triggerNow()
+            }
+        changeWallpaperMenuAppearance = menuAppearance
         _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
         self.historyLogger = historyLogger
         _currentWallpaperAlbumController = StateObject(wrappedValue: currentWallpaperAlbumController)
@@ -127,11 +135,15 @@ struct photos_wallpaperApp: App {
         changeWallpaperHotKeyController = GlobalHotKeyController(
             keyCode: UInt32(kVK_ANSI_W),
             modifiers: UInt32(controlKey) | UInt32(optionKey)
-        ) { [weak firstRunStartupController, weak cycleController] in
-            Task { @MainActor in
-                firstRunStartupController?.dismissWelcomeIfPresented()
-                cycleController?.triggerNow()
+        ) { [weak menuAppearance] in
+            // Carbon dispatches on the main thread. Close any tracking menu before
+            // scheduling the asynchronous wallpaper operation on the main actor.
+            MainActor.assumeIsolated {
+                menuAppearance?.activateShortcut()
             }
+        }
+        menuAppearance.menuTrackingChanged = { [weak controller = changeWallpaperHotKeyController] isTracking in
+            controller?.setMenuTracking(isTracking)
         }
         if !changeWallpaperHotKeyController.isRegistered {
             debugLog("photos_wallpaperApp: could not register global shortcut Control-Option-W.")
@@ -158,7 +170,7 @@ struct photos_wallpaperApp: App {
 
     var body: some Scene {
         MenuBarExtra("Photos Wallpaper", systemImage: "photo") {
-            Button("Change Wallpaper Now") {
+            Button(Self.changeWallpaperMenuTitle) {
                 prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
             }
