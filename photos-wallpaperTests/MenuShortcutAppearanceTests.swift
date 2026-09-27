@@ -3,6 +3,34 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
+    @Test func customShortcutTracksVisibleStateColumn() throws {
+        let target = FakeMenuActionTarget()
+        let (menu, item) = makeShortcutMenu(target: target)
+        let toggle = NSMenuItem(title: "Login setting", action: nil, keyEquivalent: "")
+        menu.addItem(toggle)
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W")
+        appearance.prepare(menu)
+        let view = try #require(item.view as? MenuShortcutView)
+        let uncheckedWidth = view.frame.width
+        #expect(view.leadingInset == 16)
+
+        toggle.state = .on
+        #expect(view.leadingInset == 30)
+        #expect(view.frame.width == uncheckedWidth + 14)
+        toggle.state = .off
+        #expect(view.leadingInset == 16)
+        #expect(view.frame.width == uncheckedWidth)
+
+        // A checked schedule in a submenu must not indent the parent menu.
+        let submenu = NSMenu()
+        let selected = NSMenuItem(title: "Selected schedule", action: nil, keyEquivalent: "")
+        selected.state = .on
+        submenu.addItem(selected)
+        toggle.submenu = submenu
+        appearance.prepare(menu)
+        #expect(view.leadingInset == 16)
+    }
+
     @Test func customShortcutKeepsNativeKeyboardActivation() throws {
         let target = FakeMenuActionTarget()
         let (menu, item) = makeShortcutMenu(target: target)

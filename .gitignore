@@ -72,3 +72,4 @@ photos-wallpaper.xcodeproj/project.xcworkspace/xcuserdata/stuart.xcuserdatad/Use
 build/
 
 .derivedData/
+scripts/move.sh

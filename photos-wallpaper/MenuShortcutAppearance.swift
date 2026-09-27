@@ -32,7 +32,7 @@ final class MenuShortcutAppearance {
         }
         // SwiftUI can build or replace rows lazily. Install before layout when possible and
         // reconcile again on opening; do not replace SwiftUI's own NSMenuDelegate.
-        for name in [NSMenu.didAddItemNotification, NSMenu.didChangeItemNotification,
+        for name in [NSMenu.didAddItemNotification, NSMenu.didRemoveItemNotification, NSMenu.didChangeItemNotification,
                      NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification] {
             observers.append(notificationCenter.addObserver(
                 forName: name, object: nil, queue: nil
@@ -163,7 +163,12 @@ final class MenuShortcutView: NSView {
     private var hoverTrackingArea: NSTrackingArea?
     private var isHovered = false
     // Custom views span the row, including the native checkmark gutter.
-    private static let leadingInset: CGFloat = 30
+    private(set) var leadingInset: CGFloat = 16
+
+    private static func leadingInset(for item: NSMenuItem) -> CGFloat {
+        let hasState = item.menu?.items.contains { !$0.isHidden && $0.state != .off } == true
+        return item.menu?.showsStateColumn != false && hasState ? 30 : 16
+    }
     private static let trailingInset: CGFloat = 28
     private static let columnGap: CGFloat = 32
 
@@ -171,12 +176,13 @@ final class MenuShortcutView: NSView {
         self.item = item
         self.shortcut = shortcut
         font = item.menu?.font ?? NSFont.menuFont(ofSize: 0)
+        leadingInset = Self.leadingInset(for: item)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let titleSize = (item.title as NSString).size(withAttributes: attributes)
         let shortcutSize = (shortcut as NSString).size(withAttributes: attributes)
         super.init(frame: NSRect(
             x: 0, y: 0,
-            width: ceil(Self.leadingInset + titleSize.width + Self.columnGap
+            width: ceil(leadingInset + titleSize.width + Self.columnGap
                         + shortcutSize.width + Self.trailingInset),
             height: ceil(max(titleSize.height, shortcutSize.height)) + 8
         ))
@@ -201,6 +207,11 @@ final class MenuShortcutView: NSView {
 
     func bind(to item: NSMenuItem) {
         self.item = item
+        let updatedInset = Self.leadingInset(for: item)
+        if updatedInset != leadingInset {
+            setFrameSize(NSSize(width: frame.width + updatedInset - leadingInset, height: frame.height))
+            leadingInset = updatedInset
+        }
         setAccessibilityLabel(item.title)
         needsDisplay = true
     }
@@ -226,7 +237,7 @@ final class MenuShortcutView: NSView {
         let hint = shortcut as NSString
         let titleSize = title.size(withAttributes: attributes)
         let hintSize = hint.size(withAttributes: attributes)
-        title.draw(at: NSPoint(x: Self.leadingInset, y: (bounds.height - titleSize.height) / 2),
+        title.draw(at: NSPoint(x: leadingInset, y: (bounds.height - titleSize.height) / 2),
                    withAttributes: attributes)
         hint.draw(at: NSPoint(x: bounds.width - Self.trailingInset - hintSize.width,
                               y: (bounds.height - hintSize.height) / 2),
