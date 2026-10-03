@@ -1,12 +1,12 @@
 import AppKit
 import Carbon
 
-/// Changes only the drawing of a SwiftUI-created menu item. Its native key equivalent, target,
-/// and action stay in place so AppKit can still activate it while the menu is tracking.
+/// Keeps a SwiftUI-created menu item's shortcut and drawing aligned with the saved choice.
+/// Its target and action stay in place so AppKit can activate it while the menu is tracking.
 @MainActor
 final class MenuShortcutAppearance {
     private let title: String
-    private let shortcut: String
+    private var shortcut: GlobalShortcut
     private let action: () -> Void
     private weak var shortcutItem: NSMenuItem?
     private var trackingMenus: [NSMenu] = []
@@ -18,7 +18,7 @@ final class MenuShortcutAppearance {
     private var isReadingEvents = false
     var menuTrackingChanged: (Bool) -> Void = { _ in }
 
-    init(title: String, shortcut: String, notificationCenter: NotificationCenter = .default,
+    init(title: String, shortcut: GlobalShortcut, notificationCenter: NotificationCenter = .default,
          activateShortcut: @escaping () -> Void = {}) {
         self.title = title
         self.shortcut = shortcut
@@ -66,14 +66,18 @@ final class MenuShortcutAppearance {
     }
 
     private func matchesShortcut(_ event: NSEvent) -> Bool {
-        event.type == .keyDown && event.keyCode == UInt16(kVK_ANSI_W)
-            && event.modifierFlags.intersection([.control, .option, .command, .shift]) == [.control, .option]
+        shortcut.matches(event)
+    }
+
+    func updateShortcut(_ shortcut: GlobalShortcut) {
+        self.shortcut = shortcut
+        if let menu = shortcutItem?.menu { prepare(menu) }
     }
 
     private func startTrackingShortcut() {
         guard trackingObserver == nil else { return }
         // Carbon captures registered hotkeys before AppKit sees them, but menu tracking
-        // can defer their delivery. Temporarily release the registration to receive W here.
+        // can defer their delivery. Temporarily release the registration to receive the key here.
         menuTrackingChanged(true)
         let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeSources.rawValue,
                                                          true, 0) { [weak self] _, _ in
@@ -140,8 +144,10 @@ final class MenuShortcutAppearance {
         for item in menu.items {
             if item.title == title, !item.keyEquivalent.isEmpty {
                 shortcutItem = item
+                item.keyEquivalent = shortcut.keyLabel.lowercased()
+                item.keyEquivalentModifierMask = shortcut.appKitModifiers
                 if let view = item.view as? MenuShortcutView {
-                    view.bind(to: item)
+                    view.bind(to: item, shortcut: shortcut)
                 } else {
                     item.view = MenuShortcutView(item: item, shortcut: shortcut)
                 }
@@ -158,7 +164,7 @@ final class MenuShortcutAppearance {
 @MainActor
 final class MenuShortcutView: NSView {
     private weak var item: NSMenuItem?
-    private let shortcut: String
+    private var shortcut: GlobalShortcut
     private let font: NSFont
     private var hoverTrackingArea: NSTrackingArea?
     private var isHovered = false
@@ -172,14 +178,14 @@ final class MenuShortcutView: NSView {
     private static let trailingInset: CGFloat = 28
     private static let columnGap: CGFloat = 32
 
-    init(item: NSMenuItem, shortcut: String) {
+    init(item: NSMenuItem, shortcut: GlobalShortcut) {
         self.item = item
         self.shortcut = shortcut
         font = item.menu?.font ?? NSFont.menuFont(ofSize: 0)
         leadingInset = Self.leadingInset(for: item)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let titleSize = (item.title as NSString).size(withAttributes: attributes)
-        let shortcutSize = (shortcut as NSString).size(withAttributes: attributes)
+        let shortcutSize = (shortcut.displayString as NSString).size(withAttributes: attributes)
         super.init(frame: NSRect(
             x: 0, y: 0,
             width: ceil(leadingInset + titleSize.width + Self.columnGap
@@ -190,23 +196,36 @@ final class MenuShortcutView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.menuItem)
         setAccessibilityLabel(item.title)
-        setAccessibilityHelp(shortcut)
+        setAccessibilityHelp(shortcut.displayString)
     }
 
     required init?(coder: NSCoder) {
-        shortcut = coder.decodeObject(of: NSString.self, forKey: "shortcut") as String? ?? ""
+        shortcut = GlobalShortcut(
+            keyCode: UInt32(clamping: coder.decodeInteger(forKey: "shortcutKeyCode")),
+            modifiers: .init(rawValue: UInt32(clamping: coder.decodeInteger(forKey: "shortcutModifiers")))
+        ) ?? .defaultShortcut
         font = coder.decodeObject(of: NSFont.self, forKey: "menuFont") ?? NSFont.menuFont(ofSize: 0)
         super.init(coder: coder)
     }
 
     override func encode(with coder: NSCoder) {
         super.encode(with: coder)
-        coder.encode(shortcut, forKey: "shortcut")
+        coder.encode(Int(shortcut.keyCode), forKey: "shortcutKeyCode")
+        coder.encode(Int(shortcut.modifiers.rawValue), forKey: "shortcutModifiers")
         coder.encode(font, forKey: "menuFont")
     }
 
-    func bind(to item: NSMenuItem) {
+    func bind(to item: NSMenuItem, shortcut: GlobalShortcut? = nil) {
         self.item = item
+        if let shortcut, shortcut != self.shortcut {
+            let attributes: [NSAttributedString.Key: Any] = [.font: font]
+            let titleWidth = (item.title as NSString).size(withAttributes: attributes).width
+            let newWidth = (shortcut.displayString as NSString).size(withAttributes: attributes).width
+            setFrameSize(NSSize(width: ceil(leadingInset + titleWidth + Self.columnGap
+                                           + newWidth + Self.trailingInset), height: frame.height))
+            self.shortcut = shortcut
+            setAccessibilityHelp(shortcut.displayString)
+        }
         let updatedInset = Self.leadingInset(for: item)
         if updatedInset != leadingInset {
             setFrameSize(NSSize(width: frame.width + updatedInset - leadingInset, height: frame.height))
@@ -234,7 +253,7 @@ final class MenuShortcutView: NSView {
         // Both columns deliberately share the same semantic colour in every state.
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         let title = item.title as NSString
-        let hint = shortcut as NSString
+        let hint = shortcut.displayString as NSString
         let titleSize = title.size(withAttributes: attributes)
         let hintSize = hint.size(withAttributes: attributes)
         title.draw(at: NSPoint(x: leadingInset, y: (bounds.height - titleSize.height) / 2),
@@ -293,9 +312,7 @@ final class MenuShortcutView: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.keyCode == UInt16(kVK_ANSI_W),
-              event.modifierFlags.contains([.control, .option]),
-              event.modifierFlags.intersection([.command, .shift]) == [] else {
+        guard shortcut.matches(event) else {
             return super.performKeyEquivalent(with: event)
         }
         return activate()
