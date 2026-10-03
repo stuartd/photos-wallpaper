@@ -1,66 +1,127 @@
+// Adapted from MacClipboardDiff. Copyright (c) 2026 stuartd. MIT license; see LICENSE.
 import Carbon
 import Foundation
 
-private let photosWallpaperHotKeySignature: OSType = 0x5057504B // "PWPK"
+private let photosWallpaperHotKeySignature: OSType = 0x5057504B
 private let photosWallpaperHotKeyIdentifier: UInt32 = 1
 
-/// Registers the app's shortcut with macOS so it works while another app is active.
-///
-/// SwiftUI's `keyboardShortcut` displays and handles the shortcut in the menu, but menu bar apps
-/// also need a Carbon hot key registration to receive it globally.
+@MainActor
+protocol HotKeyBackend: AnyObject {
+    func installEventHandler(action: @escaping () -> Void) -> OSStatus
+    func register(_ shortcut: GlobalShortcut) -> Result<EventHotKeyRef, GlobalShortcutError>
+    nonisolated func unregister(_ reference: EventHotKeyRef)
+}
+
+@MainActor
 final class GlobalHotKeyController {
-    private var eventHandler: EventHandlerRef?
-    private var hotKey: EventHotKeyRef?
-    private let action: () -> Void
-    private let keyCode: UInt32
-    private let modifiers: UInt32
+    private let backend: HotKeyBackend
+    private let validate: (GlobalShortcut) -> GlobalShortcutError?
+    private var hotKeyRef: EventHotKeyRef?
+    private let eventHandlerStatus: OSStatus
+    private var isMenuTracking = false
+    private var shortcut: GlobalShortcut
 
-    private(set) var isRegistered = false
+    var isRegistered: Bool { hotKeyRef != nil }
+    private(set) var registeredShortcut: GlobalShortcut?
+    private(set) var lastError: GlobalShortcutError?
 
-    init(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
-        self.action = action
-        self.keyCode = keyCode
-        self.modifiers = modifiers
-        installEventHandler()
-        registerHotKey(keyCode: keyCode, modifiers: modifiers)
+    init(
+        shortcut: GlobalShortcut,
+        backend: HotKeyBackend? = nil,
+        validate: @escaping (GlobalShortcut) -> GlobalShortcutError? = { _ in nil },
+        action: @escaping () -> Void
+    ) {
+        let backend = backend ?? CarbonHotKeyBackend()
+        self.shortcut = shortcut
+        self.backend = backend
+        self.validate = validate
+        eventHandlerStatus = backend.installEventHandler(action: action)
+        updateShortcut(shortcut)
     }
 
     deinit {
-        if let hotKey {
-            UnregisterEventHotKey(hotKey)
+        if let hotKeyRef {
+            backend.unregister(hotKeyRef)
         }
+    }
+
+    func setMenuTracking(_ isTracking: Bool) {
+        isMenuTracking = isTracking
+        if isTracking {
+            if let hotKeyRef {
+                backend.unregister(hotKeyRef)
+                self.hotKeyRef = nil
+            }
+        } else if hotKeyRef == nil {
+            if !updateShortcut(shortcut) {
+                debugLog("GlobalHotKeyController: could not restore shortcut after menu tracking: \(lastError?.message ?? "Unknown error")")
+            }
+        }
+    }
+
+    @discardableResult
+    func updateShortcut(_ shortcut: GlobalShortcut) -> Bool {
+        guard eventHandlerStatus == noErr else {
+            lastError = .eventHandlerFailed(eventHandlerStatus)
+            return false
+        }
+        // Startup and replacement must use the same checks. Recheck even when
+        // saving the current shortcut, since system settings may have changed.
+        if let error = validate(shortcut) {
+            lastError = error
+            return false
+        }
+        if hotKeyRef != nil, registeredShortcut == shortcut {
+            lastError = nil
+            return true
+        }
+
+        // Keep the old registration until macOS accepts its replacement.
+        switch backend.register(shortcut) {
+        case .success(let reference):
+            if let hotKeyRef {
+                backend.unregister(hotKeyRef)
+            }
+            hotKeyRef = reference
+            self.shortcut = shortcut
+            if isMenuTracking {
+                backend.unregister(reference)
+                hotKeyRef = nil
+            }
+            registeredShortcut = shortcut
+            lastError = nil
+            return true
+        case .failure(let error):
+            lastError = error
+            return false
+        }
+    }
+}
+
+@MainActor
+final class CarbonHotKeyBackend: HotKeyBackend {
+    private var eventHandler: EventHandlerRef?
+    private var action: (() -> Void)?
+
+    deinit {
         if let eventHandler {
             RemoveEventHandler(eventHandler)
         }
     }
 
-    func setMenuTracking(_ isTracking: Bool) {
-        if isTracking {
-            if let hotKey {
-                UnregisterEventHotKey(hotKey)
-                self.hotKey = nil
-            }
-        } else if hotKey == nil {
-            registerHotKey(keyCode: keyCode, modifiers: modifiers)
-            if !isRegistered {
-                debugLog("GlobalHotKeyController: could not restore shortcut after menu tracking.")
-            }
-        }
-    }
-
-    private func installEventHandler() {
+    func installEventHandler(action: @escaping () -> Void) -> OSStatus {
+        self.action = action
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
 
-        // Menu tracking temporarily uses raw AppKit key events instead of Carbon hotkeys.
-        InstallEventHandler(
+        return InstallEventHandler(
             GetEventDispatcherTarget(),
             { _, event, userData in
                 guard let event, let userData else { return noErr }
 
-                let controller = Unmanaged<GlobalHotKeyController>
+                let backend = Unmanaged<CarbonHotKeyBackend>
                     .fromOpaque(userData)
                     .takeUnretainedValue()
 
@@ -81,7 +142,8 @@ final class GlobalHotKeyController {
                     return noErr
                 }
 
-                controller.action()
+                // Carbon dispatches on the main thread, including inside the modal picker.
+                MainActor.assumeIsolated { backend.action?() }
                 return noErr
             },
             1,
@@ -91,20 +153,29 @@ final class GlobalHotKeyController {
         )
     }
 
-    private func registerHotKey(keyCode: UInt32, modifiers: UInt32) {
+    func register(_ shortcut: GlobalShortcut) -> Result<EventHotKeyRef, GlobalShortcutError> {
         let hotKeyID = EventHotKeyID(
             signature: photosWallpaperHotKeySignature,
             id: photosWallpaperHotKeyIdentifier
         )
+
+        var reference: EventHotKeyRef?
         let status = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+            shortcut.keyCode,
+            shortcut.carbonModifiers,
             hotKeyID,
             GetEventDispatcherTarget(),
-            0,
-            &hotKey
+            OptionBits(kEventHotKeyExclusive),
+            &reference
         )
 
-        isRegistered = status == noErr
+        guard status == noErr, let reference else {
+            return .failure(.registrationFailure(status == noErr ? OSStatus(eventInternalErr) : status))
+        }
+        return .success(reference)
+    }
+
+    nonisolated func unregister(_ reference: EventHotKeyRef) {
+        UnregisterEventHotKey(reference)
     }
 }

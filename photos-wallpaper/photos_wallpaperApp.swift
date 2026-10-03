@@ -9,7 +9,6 @@ import SwiftUI
 import Photos
 import AppKit
 import Combine
-import Carbon
 import Darwin
 
 @MainActor
@@ -112,8 +111,7 @@ struct photos_wallpaperApp: App {
     private let historyLogger: WallpaperHistoryLogger
     private let runtimeLogger = AppRuntimeLogger.shared
     private let documentOpener = AppDocumentOpener()
-    private let changeWallpaperHotKeyController: GlobalHotKeyController
-    private let changeWallpaperMenuAppearance: MenuShortcutAppearance
+    @StateObject private var shortcutController: WallpaperShortcutController
 
     init() {
         self.singleInstanceLock = Self.acquireSingleInstanceLock()
@@ -122,32 +120,16 @@ struct photos_wallpaperApp: App {
         let historyLogger = WallpaperHistoryLogger()
         let currentWallpaperAlbumController = CurrentWallpaperAlbumController(historyLogger: historyLogger)
         let cycleController = WallpaperCycleController(historyLogger: historyLogger)
-        let menuAppearance = MenuShortcutAppearance(
-            title: Self.changeWallpaperMenuTitle, shortcut: "⌃⌥W") { [weak firstRunStartupController, weak cycleController] in
+        let shortcutController = WallpaperShortcutController(
+            menuTitle: Self.changeWallpaperMenuTitle) { [weak firstRunStartupController, weak cycleController] in
                 firstRunStartupController?.dismissWelcomeIfPresented()
                 cycleController?.triggerNow()
             }
-        changeWallpaperMenuAppearance = menuAppearance
+        _shortcutController = StateObject(wrappedValue: shortcutController)
         _firstRunStartupController = StateObject(wrappedValue: firstRunStartupController)
         self.historyLogger = historyLogger
         _currentWallpaperAlbumController = StateObject(wrappedValue: currentWallpaperAlbumController)
         _cycleController = StateObject(wrappedValue: cycleController)
-        changeWallpaperHotKeyController = GlobalHotKeyController(
-            keyCode: UInt32(kVK_ANSI_W),
-            modifiers: UInt32(controlKey) | UInt32(optionKey)
-        ) { [weak menuAppearance] in
-            // Carbon dispatches on the main thread. Close any tracking menu before
-            // scheduling the asynchronous wallpaper operation on the main actor.
-            MainActor.assumeIsolated {
-                menuAppearance?.activateShortcut()
-            }
-        }
-        menuAppearance.menuTrackingChanged = { [weak controller = changeWallpaperHotKeyController] isTracking in
-            controller?.setMenuTracking(isTracking)
-        }
-        if !changeWallpaperHotKeyController.isRegistered {
-            debugLog("photos_wallpaperApp: could not register global shortcut Control-Option-W.")
-        }
         AppleScriptCommandCoordinator.shared.configure(
             currentWallpaperAlbumController: currentWallpaperAlbumController)
         firstRunStartupController.scheduleWelcomeIfNeeded()
@@ -174,7 +156,8 @@ struct photos_wallpaperApp: App {
                 prepareForUserInitiatedSurface()
                 cycleController.triggerNow()
             }
-            .keyboardShortcut("w", modifiers: [.control, .option])
+            .keyboardShortcut(shortcutController.shortcut.keyEquivalent,
+                              modifiers: shortcutController.shortcut.swiftUIModifiers)
             .disabled(isMenuInteractionDisabled)
 
             Picker("Set Schedule", selection: frequencyBinding) {
@@ -194,7 +177,7 @@ struct photos_wallpaperApp: App {
                 guard pendingStartAtLoginPromptFrequency != nil else { return }
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
-            
+
             Divider()
 
             Button(Self.findCurrentWallpaperMenuTitle) {
@@ -207,6 +190,12 @@ struct photos_wallpaperApp: App {
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isMenuInteractionDisabled)
+
+            Button("Change Keyboard Shortcut…") {
+                prepareForUserInitiatedSurface()
+                shortcutController.showSettings()
+            }
+            .disabled(isMenuInteractionDisabled)
 
             Divider()
 

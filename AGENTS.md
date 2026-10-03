@@ -10,6 +10,8 @@ The user is product owner, QA, release manager, and final decision-maker. Prefer
 
 - `photos-wallpaper/`: app source.
 - `photos-wallpaper/photos_wallpaperApp.swift`: SwiftUI entry point and menu bar commands.
+- `photos-wallpaper/WallpaperShortcutController.swift`: saved shortcut, global registration, and menu coordination.
+- `photos-wallpaper/ShortcutSettingsWindowController.swift`: reusable native shortcut picker adapted from MacClipboardDiff, configured with validation and save callbacks.
 - `photos-wallpaper/WallpaperCycleController.swift`: scheduling, wake/unlock/session handling, screen coordination, and notification behavior.
 - `photos-wallpaper/PhotoManager.swift`: Photos.framework access, random asset selection, image rendering, album updates, and wallpaper application bridge.
 - `photos-wallpaper/WallpaperManager.swift`: AppKit wallpaper API wrapper.

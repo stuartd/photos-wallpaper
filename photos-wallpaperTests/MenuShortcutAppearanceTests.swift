@@ -8,7 +8,7 @@ extension PhotosWallpaperTests {
         let (menu, item) = makeShortcutMenu(target: target)
         let toggle = NSMenuItem(title: "Login setting", action: nil, keyEquivalent: "")
         menu.addItem(toggle)
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W")
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut)
         appearance.prepare(menu)
         let view = try #require(item.view as? MenuShortcutView)
         let uncheckedWidth = view.frame.width
@@ -34,7 +34,7 @@ extension PhotosWallpaperTests {
     @Test func customShortcutKeepsNativeKeyboardActivation() throws {
         let target = FakeMenuActionTarget()
         let (menu, item) = makeShortcutMenu(target: target)
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut,
                                                 notificationCenter: NotificationCenter())
         let originalAction = item.action
         appearance.prepare(menu)
@@ -58,7 +58,7 @@ extension PhotosWallpaperTests {
     @Test func customShortcutForwardsClickAndAccessibilityToOriginalAction() throws {
         let target = FakeMenuActionTarget()
         let (menu, item) = makeShortcutMenu(target: target)
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut,
                                                 notificationCenter: NotificationCenter())
         appearance.prepare(menu)
         let view = try #require(item.view as? MenuShortcutView)
@@ -81,7 +81,7 @@ extension PhotosWallpaperTests {
         let otherItem = NSMenuItem(title: "Other command", action: nil, keyEquivalent: "")
         menu.addItem(otherItem)
         let center = NotificationCenter()
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut,
                                                 notificationCenter: center)
 
         center.post(name: NSMenu.didBeginTrackingNotification, object: menu)
@@ -96,7 +96,7 @@ extension PhotosWallpaperTests {
     @Test func customShortcutFollowsNativeMenuCreationAndReplacement() {
         let target = FakeMenuActionTarget()
         let (menu, item) = makeShortcutMenu(target: target)
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W")
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut)
         menu.removeItem(item)
         menu.addItem(item)
         #expect(item.view is MenuShortcutView)
@@ -112,7 +112,7 @@ extension PhotosWallpaperTests {
         let center = NotificationCenter()
         let menu = FakeTrackingMenu()
         var activationCount = 0
-        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: .defaultShortcut,
                                                 notificationCenter: center) {
             #expect(menu.didCancelTracking)
             activationCount += 1
@@ -127,7 +127,7 @@ extension PhotosWallpaperTests {
         let (menu, item) = makeShortcutMenu(target: target)
         let center = NotificationCenter()
         var activationCount = 0
-        let appearance = MenuShortcutAppearance(title: item.title, shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut,
                                                 notificationCenter: center) {
             activationCount += 1
         }
@@ -144,7 +144,7 @@ extension PhotosWallpaperTests {
         let center = NotificationCenter()
         let menu = FakeTrackingMenu()
         var transitions: [Bool] = []
-        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: .defaultShortcut,
                                                 notificationCenter: center) {
             #expect(transitions == [true, false])
         }
@@ -161,7 +161,7 @@ extension PhotosWallpaperTests {
     }
 
     @Test func trackingEventsConsumeOnlyShortcutAndIgnoreKeyRepeat() throws {
-        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: "⌃⌥W",
+        let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: .defaultShortcut,
                                                 notificationCenter: NotificationCenter())
         func key(_ modifiers: NSEvent.ModifierFlags, repeated: Bool = false) throws -> NSEvent {
             try #require(NSEvent.keyEvent(
@@ -181,6 +181,50 @@ extension PhotosWallpaperTests {
         let repeats = appearance.filterTrackingEvents([repeatKey])
         #expect(!repeats.shouldActivate)
         #expect(repeats.remaining.isEmpty)
+    }
+
+    @Test func changedShortcutUpdatesHintAndConsumesOnlyTheNewBinding() throws {
+        let target = FakeMenuActionTarget()
+        let (menu, item) = makeShortcutMenu(target: target)
+        let appearance = MenuShortcutAppearance(title: item.title, shortcut: .defaultShortcut,
+                                                notificationCenter: NotificationCenter())
+        appearance.prepare(menu)
+        let view = try #require(item.view as? MenuShortcutView)
+        let custom = try #require(GlobalShortcut(keyCode: 2, modifiers: [.command, .control, .shift]))
+        appearance.updateShortcut(custom)
+        #expect(item.view === view)
+        #expect(item.keyEquivalent == "d")
+        #expect(item.keyEquivalentModifierMask == custom.appKitModifiers)
+        #expect(view.accessibilityHelp() == custom.displayString)
+
+        func key(_ code: UInt16, _ modifiers: NSEvent.ModifierFlags) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: 0, context: nil,
+                characters: code == 13 ? "w" : "d", charactersIgnoringModifiers: code == 13 ? "w" : "d",
+                isARepeat: false, keyCode: code))
+        }
+        let old = try key(13, [.control, .option])
+        let changed = try key(2, custom.appKitModifiers)
+        let extra = try key(2, custom.appKitModifiers.union(.option))
+        let result = appearance.filterTrackingEvents([old, changed, extra])
+        #expect(result.shouldActivate)
+        #expect(result.remaining.count == 2)
+        #expect(result.remaining.first === old)
+        #expect(result.remaining.last === extra)
+        #expect(!view.performKeyEquivalent(with: old))
+        #expect(view.performKeyEquivalent(with: changed))
+        #expect(target.activationCount == 1)
+
+        // SwiftUI may replace the menu row after the preference changes.
+        let replacement = NSMenuItem(title: item.title, action: item.action, keyEquivalent: "w")
+        replacement.target = target
+        menu.removeItem(item)
+        menu.addItem(replacement)
+        appearance.prepare(menu)
+        #expect(replacement.keyEquivalent == "d")
+        #expect(replacement.keyEquivalentModifierMask == custom.appKitModifiers)
+        #expect((replacement.view as? MenuShortcutView)?.accessibilityHelp() == custom.displayString)
     }
 
     private func makeShortcutMenu(target: FakeMenuActionTarget) -> (NSMenu, NSMenuItem) {
