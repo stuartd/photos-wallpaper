@@ -171,30 +171,61 @@ nonisolated private enum AppLogStorage {
     }
 }
 
+/// Keeps refreshing an open log without reading it while its window is hidden or minimized.
+@MainActor
+final class PlainTextLogRefresher {
+    private let waitForRefresh: @Sendable () async throws -> Void
+    private var refreshTask: Task<Void, Never>?
+
+    init(waitForRefresh: @escaping @Sendable () async throws -> Void = {
+        try await Task.sleep(for: .seconds(1))
+    }) {
+        self.waitForRefresh = waitForRefresh
+    }
+
+    deinit {
+        refreshTask?.cancel()
+    }
+
+    func follow(_ load: @escaping @Sendable () async -> String?,
+                isVisible: @escaping () -> Bool,
+                update: @escaping (String) -> Void) {
+        stop()
+        refreshTask = Task { [waitForRefresh] in
+            while !Task.isCancelled {
+                do { try await waitForRefresh() } catch { return }
+                guard !Task.isCancelled else { return }
+                // Visibility can return after minimization; only closing stops the follower.
+                guard isVisible() else { continue }
+                if let text = await load(), !Task.isCancelled { update(text) }
+            }
+        }
+    }
+
+    func stop() {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+}
+
 /// Shows plain-text app logs in a read-only window owned by Photos Wallpaper.
 @MainActor
 final class PlainTextLogWindow: NSObject, NSWindowDelegate {
     private let title: String
     private var window: NSWindow?
     private weak var textView: NSTextView?
-    private var refreshTask: Task<Void, Never>?
+    private let refresher = PlainTextLogRefresher()
 
     var isVisible: Bool { window?.isVisible == true }
 
     func follow(_ load: @escaping @Sendable () async -> String?) {
-        refreshTask?.cancel()
-        refreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                guard let self, self.isVisible else { return }
-                if let text = await load(), !Task.isCancelled { self.update(with: text) }
-            }
-        }
+        refresher.follow(load,
+                         isVisible: { [weak self] in self?.isVisible == true },
+                         update: { [weak self] in self?.update(with: $0) })
     }
 
     func windowWillClose(_ notification: Notification) {
-        refreshTask?.cancel()
-        refreshTask = nil
+        refresher.stop()
     }
 
     init(title: String) {

@@ -38,10 +38,25 @@ struct GlobalShortcut: Equatable, Sendable {
         label { _ in GlobalShortcutValidator.keyboardCharacters(self, shifted: false) }
     }
 
+    @MainActor var keyEquivalentCharacters: String {
+        keyEquivalentCharacters { _ in GlobalShortcutValidator.keyboardCharacters(self, shifted: false) }
+    }
+
     /// The binding is physical; only its presentation follows the selected keyboard layout.
     func label(using characters: (UInt32) -> String?) -> String {
-        let value = characters(keyCode)
-        return value.flatMap { $0.isEmpty ? nil : $0.uppercased() } ?? Self.keyLabels[keyCode]!
+        let value = resolvedCharacters(using: characters)
+        let uppercase = value.uppercased()
+        // A single key such as German ß must not become a misleading multi-letter label (SS).
+        return uppercase.count == 1 ? uppercase : value
+    }
+
+    func keyEquivalentCharacters(using characters: (UInt32) -> String?) -> String {
+        // Native equivalents use the layout character directly; display capitalization can be lossy.
+        resolvedCharacters(using: characters).lowercased()
+    }
+
+    private func resolvedCharacters(using characters: (UInt32) -> String?) -> String {
+        characters(keyCode).flatMap { $0.isEmpty ? nil : $0 } ?? Self.keyLabels[keyCode]!
     }
 
     @MainActor var displayString: String {

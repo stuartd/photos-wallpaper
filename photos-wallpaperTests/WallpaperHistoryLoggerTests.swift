@@ -6,6 +6,76 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
+    @Test func logRefreshSkipsHiddenWindowsAndResumesAfterRestoration() async throws {
+        let clock = FakeLogRefreshClock()
+        let refresher = PlainTextLogRefresher(waitForRefresh: { try await clock.waitForRefresh() })
+        defer {
+            refresher.stop()
+            clock.resumePendingWaits()
+        }
+        let reads = LockedValue(0)
+        var isVisible = false
+        var updates: [String] = []
+        refresher.follow({
+            reads.set(reads.get() + 1)
+            return "latest log"
+        }, isVisible: { isVisible }, update: { updates.append($0) })
+
+        let started = await waitForCondition { clock.pendingWaitCount == 1 }
+        try #require(started)
+        for tick in 1...3 {
+            clock.advance()
+            let stillFollowing = await waitForCondition { clock.waitCount == tick + 1 }
+            try #require(stillFollowing)
+            #expect(reads.get() == 0)
+            #expect(updates.isEmpty)
+        }
+
+        isVisible = true
+        clock.advance()
+        let resumed = await waitForCondition { updates == ["latest log"] }
+        #expect(resumed)
+        #expect(reads.get() == 1)
+
+        isVisible = false
+        clock.advance()
+        let hiddenAgain = await waitForCondition { clock.waitCount == 6 }
+        try #require(hiddenAgain)
+        #expect(reads.get() == 1)
+        isVisible = true
+        clock.advance()
+        let resumedAgain = await waitForCondition { updates.count == 2 }
+        #expect(resumedAgain)
+        #expect(reads.get() == 2)
+    }
+
+    @Test func closingLogStopsPendingRefreshEvenIfWindowBecomesVisibleAgain() async throws {
+        let clock = FakeLogRefreshClock()
+        let refresher = PlainTextLogRefresher(waitForRefresh: { try await clock.waitForRefresh() })
+        defer {
+            refresher.stop()
+            clock.resumePendingWaits()
+        }
+        let reads = LockedValue(0)
+        var isVisible = false
+        var updates: [String] = []
+        refresher.follow({
+            reads.set(reads.get() + 1)
+            return "log"
+        }, isVisible: { isVisible }, update: { updates.append($0) })
+        let started = await waitForCondition { clock.pendingWaitCount == 1 }
+        try #require(started)
+
+        refresher.stop()
+        isVisible = true
+        clock.advance()
+        let cancelled = await waitForCondition { clock.cancelledWaitCount == 1 }
+        #expect(cancelled)
+        #expect(reads.get() == 0)
+        #expect(updates.isEmpty)
+        #expect(clock.pendingWaitCount == 0)
+    }
+
     @Test func boundedLogFileCreatesMissingFileAndAppendsText() throws {
         let logURL = temporaryTestDirectory().appendingPathComponent("runtime.log")
         defer { try? FileManager.default.removeItem(at: logURL.deletingLastPathComponent()) }

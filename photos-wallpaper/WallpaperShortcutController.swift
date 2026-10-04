@@ -105,6 +105,11 @@ extension GlobalShortcut {
     }
 
     var keyEquivalent: KeyEquivalent {
-        KeyEquivalent(keyLabel.lowercased().first ?? "w")
+        keyEquivalent { _ in GlobalShortcutValidator.keyboardCharacters(self, shifted: false) }
+    }
+
+    func keyEquivalent(using characters: (UInt32) -> String?) -> KeyEquivalent {
+        // Validated key codes always have a nonempty fallback label, even without a keyboard layout.
+        KeyEquivalent(keyEquivalentCharacters(using: characters).first!)
     }
 }

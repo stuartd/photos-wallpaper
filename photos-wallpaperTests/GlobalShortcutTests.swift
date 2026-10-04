@@ -1,8 +1,36 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
+    @Test func shortcutLabelsPreserveKeysWhoseUppercaseExpands() throws {
+        let shortcut = try #require(GlobalShortcut(keyCode: 27, modifiers: [.control, .option]))
+        for character in ["ß", "ﬃ"] {
+            #expect(shortcut.label(using: { _ in character }) == character)
+            #expect(shortcut.keyEquivalentCharacters(using: { _ in character }) == character)
+            #expect(shortcut.keyEquivalent(using: { _ in character }).character == Character(character))
+        }
+        #expect(shortcut.keyCode == 27)
+        for unavailable: String? in [nil, ""] {
+            #expect(shortcut.keyEquivalent(using: { _ in unavailable }).character == "-")
+        }
+    }
+
+    @Test func shortcutNativeEquivalentsFollowLayoutWithoutDisplayCapitalization() {
+        let shortcut = GlobalShortcut.defaultShortcut
+        #expect(shortcut.label(using: { _ in "z" }) == "Z")
+        #expect(shortcut.keyEquivalentCharacters(using: { _ in "z" }) == "z")
+        #expect(shortcut.keyEquivalent(using: { _ in "z" }).character == "z")
+        #expect(shortcut.label(using: { _ in "é" }) == "É")
+        #expect(shortcut.keyEquivalentCharacters(using: { _ in "é" }) == "é")
+        #expect(shortcut.keyEquivalent(using: { _ in "é" }).character == "é")
+        for unavailable: String? in [nil, ""] {
+            #expect(shortcut.label(using: { _ in unavailable }) == "W")
+            #expect(shortcut.keyEquivalentCharacters(using: { _ in unavailable }) == "w")
+        }
+    }
+
     @Test func shortcutDefaultAndAllowedKeys() {
         #expect(GlobalShortcut.defaultShortcut.keyCode == 13)
         #expect(GlobalShortcut.defaultShortcut.modifiers == [.control, .option])

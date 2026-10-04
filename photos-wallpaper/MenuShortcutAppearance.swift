@@ -154,7 +154,7 @@ final class MenuShortcutAppearance {
         for item in menu.items {
             if item.title == title, !item.keyEquivalent.isEmpty {
                 shortcutItem = item
-                item.keyEquivalent = shortcut.keyLabel.lowercased()
+                item.keyEquivalent = shortcut.keyEquivalentCharacters
                 item.keyEquivalentModifierMask = shortcut.appKitModifiers
                 if let view = item.view as? MenuShortcutView {
                     view.bind(to: item, shortcut: shortcut)

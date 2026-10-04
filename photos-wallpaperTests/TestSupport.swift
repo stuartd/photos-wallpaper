@@ -315,6 +315,36 @@ final class FakeFirstRunWelcomeScheduler: FirstRunWelcomeScheduling {
     }
 }
 
+/// Advances refresh waits explicitly so log-window tests do not depend on wall-clock time.
+@MainActor
+final class FakeLogRefreshClock {
+    private var pendingWaits: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCount = 0
+    private(set) var cancelledWaitCount = 0
+    var pendingWaitCount: Int { pendingWaits.count }
+
+    func waitForRefresh() async throws {
+        try Task.checkCancellation()
+        await withCheckedContinuation { continuation in
+            waitCount += 1
+            pendingWaits.append(continuation)
+        }
+        if Task.isCancelled { cancelledWaitCount += 1 }
+        try Task.checkCancellation()
+    }
+
+    func advance() {
+        guard !pendingWaits.isEmpty else { return }
+        pendingWaits.removeFirst().resume()
+    }
+
+    func resumePendingWaits() {
+        let waits = pendingWaits
+        pendingWaits.removeAll()
+        waits.forEach { $0.resume() }
+    }
+}
+
 final class FakeTimer: CancellableTimer {
     private let block: () -> Void
     private(set) var invalidateCallCount = 0
