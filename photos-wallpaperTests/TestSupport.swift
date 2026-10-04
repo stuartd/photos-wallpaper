@@ -16,7 +16,7 @@ final class FakePhotosAlbumOpener: PhotosAlbumOpening {
         self.openPhotosResult = openPhotosResult
     }
 
-    func openPhotosWallpaperAlbum() -> Bool {
+    func openPhotosWallpaperAlbum() async -> Bool {
         openAlbumCallCount += 1
         return openAlbumResult
     }
@@ -27,6 +27,7 @@ final class FakePhotosAlbumOpener: PhotosAlbumOpening {
     }
 }
 
+@MainActor
 final class FakePhotoManager: PhotoManaging {
     private let assetsToReturn: [PHAsset]
     private let assetNames: [ObjectIdentifier: String]
@@ -34,8 +35,11 @@ final class FakePhotoManager: PhotoManaging {
     private let completesImageRequestsImmediately: Bool
     var photoSelectionOverride: PhotoSelectionResult?
     var photoAccessPreflightResult: PhotoAccessPreflightResult = .ready
-    private var pendingImageCompletions: [(NSImage?) -> Void] = []
+    private var pendingImageCompletions: [@MainActor (NSImage?) -> Void] = []
     private var photoAuthorizationChangeHandlers: [() -> Void] = []
+    private(set) var cancelledImageRequestCount = 0
+    var delaysDisplayNames = false
+    var pendingDisplayNames: [() -> Void] = []
     private(set) var getRandomPhotosCallCount = 0
     private(set) var requestPhotoAccessCallCount = 0
     private(set) var requestedPhotoCount = 0
@@ -100,6 +104,13 @@ final class FakePhotoManager: PhotoManaging {
         return photoAccessPreflightResult
     }
 
+    func identifier(for asset: PHAsset) -> String { "fake-\(ObjectIdentifier(asset).hashValue)" }
+
+    func requestDisplayName(for asset: PHAsset, completion: @escaping @MainActor (String) -> Void) {
+        let deliver = { completion(self.displayName(for: asset)) }
+        if delaysDisplayNames { pendingDisplayNames.append(deliver) } else { deliver() }
+    }
+
     func displayName(for asset: PHAsset) -> String {
         if let assetName = assetNames[ObjectIdentifier(asset)] {
             return "\(assetName) created Jan 1, 2024 at 12:00:00 AM, id: fake-\(ObjectIdentifier(asset).hashValue)"
@@ -141,7 +152,7 @@ final class FakePhotoManager: PhotoManaging {
         return .photos(foundAssets, missingIdentifierCount: missingIdentifierCount)
     }
 
-    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
+    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping @MainActor (NSImage?) -> Void) -> PhotoImageRequest {
         requestedAssets.append(asset)
         requestedSizes.append(targetSize)
         if completesImageRequestsImmediately {
@@ -149,6 +160,12 @@ final class FakePhotoManager: PhotoManaging {
         } else {
             pendingImageCompletions.append(completion)
         }
+        return PhotoImageRequest { [weak self] in self?.cancelledImageRequestCount += 1 }
+    }
+
+    func completeFirstImageRequest(image: NSImage? = NSImage(size: CGSize(width: 1, height: 1))) {
+        guard !pendingImageCompletions.isEmpty else { return }
+        pendingImageCompletions.removeFirst()(image)
     }
 
     func managedCurrentWallpaperIdentifiers() -> [String] {
@@ -374,6 +391,8 @@ final class FakeActiveUserSessionEventObserver: ActiveUserSessionEventObserving 
 }
 
 final class FakeWallpaperCycleNotifier: WallpaperCycleNotifying {
+    private(set) var changeFailedCount = 0
+    func notifyWallpaperChangeFailed() { changeFailedCount += 1 }
     private(set) var noPhotosNotificationCount = 0
     private(set) var photoLibraryPermissionDeniedNotificationCount = 0
 
@@ -396,7 +415,15 @@ final class FakeExternalURLOpener: ExternalURLOpening {
     }
 }
 
+@MainActor
 final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
+    private(set) var appliedIdentifiers: [String] = []
+    func rememberAppliedWallpaper(localIdentifier: String, displayIdentifier: String) {
+        appliedIdentifiers.append(localIdentifier)
+    }
+    func recordWallpaperDetails(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
+        recordWallpaperChange(photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp)
+    }
     private let lock = NSLock()
     private var recordedEntries: [(photoName: String, screenName: String, screenCount: Int, timestamp: Date)] = []
     private var recordedOpenCallCount = 0
@@ -436,8 +463,10 @@ final class FakeWallpaperHistoryLogger: WallpaperHistoryLogging {
     }
 }
 
-struct FakeScreenProvider: ScreenProviding {
-    let screens: [NSScreen]
+@MainActor
+final class FakeScreenProvider: ScreenProviding {
+    init(screens: [NSScreen]) { self.screens = screens }
+    var screens: [NSScreen]
 }
 
 final class FakeScreenSleepStateProvider: ScreenSleepStateProviding {

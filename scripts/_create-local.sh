@@ -1,6 +1,5 @@
-# For local testing only. This builds a locally signed app/DMG and is not the App Store release path.
-
 #!/usr/bin/env bash
+# For local testing only. This builds a locally signed app/DMG and is not the App Store release path.
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"

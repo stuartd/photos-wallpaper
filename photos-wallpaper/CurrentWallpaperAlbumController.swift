@@ -230,6 +230,7 @@ enum CurrentWallpaperAlbumResultPresenter {
     }
 }
 
+@MainActor
 struct CurrentWallpaperAlbumAdder {
     let photoManager: PhotoManaging
 
@@ -335,6 +336,8 @@ struct CurrentWallpaperAlbumAdder {
 @MainActor final class CurrentWallpaperAlbumController: ObservableObject {
     @Published private(set) var isPresentingAlert = false
     @Published private(set) var isWaitingForAuthorization = false
+    @Published private(set) var isBusy = false
+    private var activeRequestCount = 0
 
     private let historyLogger: WallpaperHistoryLogger
     private let photoManager: PhotoManaging
@@ -419,11 +422,17 @@ struct CurrentWallpaperAlbumAdder {
         showsResultAlert: Bool,
         completion: (@MainActor (CurrentWallpaperAlbumAdditionResult) -> Void)?
     ) {
+        activeRequestCount += 1
+        isBusy = true
         CurrentWallpaperAlbumAdder(photoManager: photoManager).addWallpapers(withLocalIdentifiers: identifiers) { [weak self] result in
             Task { @MainActor in
                 guard let self else {
                     completion?(.unavailable)
                     return
+                }
+                defer {
+                    self.activeRequestCount -= 1
+                    self.isBusy = self.activeRequestCount > 0
                 }
                 guard result != .waitingForAuthorization else {
                     self.pendingAuthorizationRequests.append(
@@ -435,7 +444,7 @@ struct CurrentWallpaperAlbumAdder {
                     return
                 }
                 if showsResultAlert {
-                    self.handle(result)
+                    await self.handle(result)
                 }
                 completion?(result)
             }
@@ -456,11 +465,11 @@ struct CurrentWallpaperAlbumAdder {
         }
     }
 
-    private func handle(_ result: CurrentWallpaperAlbumAdditionResult) {
+    private func handle(_ result: CurrentWallpaperAlbumAdditionResult) async {
         let presentation = CurrentWallpaperAlbumResultPresenter.presentation(for: result)
         switch presentAlert(presentation) {
         case .openAlbum:
-            openPhotosWallpaperAlbum()
+            await openPhotosWallpaperAlbum()
         case .openPhotos:
             openPhotosApplication()
         case .done:
@@ -468,8 +477,8 @@ struct CurrentWallpaperAlbumAdder {
         }
     }
 
-    private func openPhotosWallpaperAlbum() {
-        guard !albumOpener.openPhotosWallpaperAlbum() else { return }
+    private func openPhotosWallpaperAlbum() async {
+        guard await !albumOpener.openPhotosWallpaperAlbum() else { return }
 
         let fallback = CurrentWallpaperAlbumResultPresentation(
             title: CurrentWallpaperAlbumStrings.albumCouldNotBeOpenedTitle,

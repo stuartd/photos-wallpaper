@@ -1,6 +1,6 @@
 # Photos Wallpaper Privacy
 
-Photos Wallpaper is a local macOS menu bar app. It uses your Photos library to choose images for your desktop wallpaper and, if you ask it to, it can add the current wallpaper photo(s) to a Photos album, called 'Photos Wallpaper'. All of that work happens on your Mac.
+Photos Wallpaper is a local macOS menu bar app. It uses your Photos library to choose images for your desktop wallpaper and, if you ask it to, it can add the current wallpaper photo(s) to a Photos album, called 'Photos Wallpaper'. The app performs this work locally using macOS Photos services. If an image is stored only in iCloud, Photos may download it. Album changes may sync through your existing iCloud Photos settings; Photos Wallpaper does not operate a cloud service or receive your photos.
 
 ## The Short Version
 
@@ -28,6 +28,7 @@ If you then choose "Open Album", Photos Wallpaper asks Photos to display the Pho
 The app stores a few settings locally on your Mac:
 
 - the wallpaper refresh frequency you selected
+- your keyboard shortcut and the identifier of the Photos Wallpaper album
 - whether the app should start at login, if you enable that option
 - local wallpaper history
 - local runtime diagnostics
@@ -38,7 +39,7 @@ To run schedules such as "When I log in" at the right time, Photos Wallpaper rea
 
 ## Wallpaper History
 
-When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Help > Logs menu.
+When a wallpaper is applied, Photos Wallpaper writes a plain-text history entry for the current app session. You can view this from the app's Help menu.
 
 History entries may include:
 
@@ -52,7 +53,7 @@ History entries are kept for the current app session and cleared when Photos Wal
 
 ## Runtime Diagnostics
 
-Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible. You can view this from the app's Help > Logs menu.
+Photos Wallpaper also keeps a local diagnostics log to make troubleshooting possible. You can view this from the app's Help menu.
 
 Diagnostics entries may include:
 
@@ -67,7 +68,7 @@ The diagnostics log is kept locally. It is not sent anywhere by the app.
 
 ## Temporary Wallpaper Files
 
-macOS wallpaper APIs work with files, so Photos Wallpaper writes generated wallpaper images into a local app cache before asking macOS to use them as desktop wallpaper. The app marks those generated files as hidden and removes stale generated wallpaper files as it continues running.
+macOS wallpaper APIs work with files, so Photos Wallpaper writes generated wallpaper images into a local app cache before asking macOS to use them as desktop wallpaper. The app marks those generated files as hidden and removes old generated wallpaper files as it continues running. Cleanup protects current desktop URLs and keeps the most recent generated image per display. Other unreferenced files have a seven-day grace period for disconnected displays and other Spaces; macOS does not expose all inactive Space wallpaper references through this API.
 
 ## What Never Leaves Your Mac
 

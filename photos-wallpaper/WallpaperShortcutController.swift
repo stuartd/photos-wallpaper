@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Combine
 import Foundation
 import SwiftUI
@@ -11,6 +12,7 @@ final class WallpaperShortcutController: ObservableObject {
     private let settingsStore: GlobalShortcutSettingsStore
     private let validator: GlobalShortcutValidator
     private var hotKeyController: GlobalHotKeyController?
+    private var inputSourceObserver: NSObjectProtocol?
     private var settingsWindowController: ShortcutSettingsWindowController?
 
     init(
@@ -18,6 +20,7 @@ final class WallpaperShortcutController: ObservableObject {
         defaults: UserDefaults = .standard,
         backend: HotKeyBackend? = nil,
         validator: GlobalShortcutValidator? = nil,
+        notificationCenter: NotificationCenter = .default,
         action: @escaping () -> Void
     ) {
         let store = GlobalShortcutSettingsStore(defaults: defaults)
@@ -27,6 +30,7 @@ final class WallpaperShortcutController: ObservableObject {
         self.validator = validator
         shortcut = initialShortcut
         menuAppearance = MenuShortcutAppearance(title: menuTitle, shortcut: initialShortcut,
+                                                notificationCenter: notificationCenter,
                                                 activateShortcut: action)
         hotKeyController = GlobalHotKeyController(
             shortcut: initialShortcut, backend: backend,
@@ -42,9 +46,24 @@ final class WallpaperShortcutController: ObservableObject {
         menuAppearance.menuTrackingChanged = { [weak self] isTracking in
             self?.hotKeyController?.setMenuTracking(isTracking)
         }
+        inputSourceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.objectWillChange.send()
+                self.menuAppearance.updateShortcut(self.shortcut)
+                self.settingsWindowController?.refreshKeyboardLayout()
+            }
+        }
         if let error = hotKeyController?.lastError {
             debugLog("WallpaperShortcutController: \(error.message)")
         }
+    }
+
+    deinit {
+        if let inputSourceObserver { DistributedNotificationCenter.default().removeObserver(inputSourceObserver) }
     }
 
     func showSettings() {
@@ -52,6 +71,7 @@ final class WallpaperShortcutController: ObservableObject {
             settingsWindowController = ShortcutSettingsWindowController(
                 currentShortcut: { [weak self] in self?.shortcut ?? .defaultShortcut },
                 accessibilityLabel: "\(photos_wallpaperApp.changeWallpaperMenuTitle) keyboard shortcut",
+                initialError: { [weak self] in self?.hotKeyController?.lastError },
                 validate: { [validator] in validator.error(for: $0) },
                 save: { [weak self] shortcut in
                     guard let self else { return .unavailable }
@@ -75,8 +95,8 @@ final class WallpaperShortcutController: ObservableObject {
 }
 
 extension GlobalShortcut {
-    var swiftUIModifiers: EventModifiers {
-        var result: EventModifiers = []
+    var swiftUIModifiers: SwiftUI.EventModifiers {
+        var result: SwiftUI.EventModifiers = []
         if modifiers.contains(.command) { result.insert(.command) }
         if modifiers.contains(.option) { result.insert(.option) }
         if modifiers.contains(.control) { result.insert(.control) }
@@ -85,6 +105,6 @@ extension GlobalShortcut {
     }
 
     var keyEquivalent: KeyEquivalent {
-        KeyEquivalent(Character(keyLabel.lowercased()))
+        KeyEquivalent(keyLabel.lowercased().first ?? "w")
     }
 }

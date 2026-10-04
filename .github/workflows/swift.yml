@@ -1,46 +1,29 @@
-# This workflow will build a Swift project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift
-
 name: Swift
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
+permissions:
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-
     runs-on: macos-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
     steps:
-        - uses: actions/checkout@v4  
-
-        - name: Select Xcode version
-          run: sudo xcode-select -s /Applications/Xcode.app
-
-        - name: Build
-          run: |
-            xcodebuild \
-              -project photos-wallpaper.xcodeproj \
-              -scheme photos-wallpaper \
-              -sdk macosx \
-              -configuration Debug \
-              CODE_SIGN_IDENTITY=- \
-              build
-
-        - name: Run tests
-          run: |
-            xcodebuild \
-              -project photos-wallpaper.xcodeproj \
-              -scheme photos-wallpaper \
-              -sdk macosx \
-              -configuration Debug \
-              -destination 'platform=macOS' \
-              CODE_SIGN_IDENTITY=- \
-              test
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Build and test
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: scripts/build_and_test.sh

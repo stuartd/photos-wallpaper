@@ -34,11 +34,17 @@ struct GlobalShortcut: Equatable, Sendable {
         self.modifiers = modifiers
     }
 
-    var keyLabel: String {
-        Self.keyLabels[keyCode]!
+    @MainActor var keyLabel: String {
+        label { _ in GlobalShortcutValidator.keyboardCharacters(self, shifted: false) }
     }
 
-    var displayString: String {
+    /// The binding is physical; only its presentation follows the selected keyboard layout.
+    func label(using characters: (UInt32) -> String?) -> String {
+        let value = characters(keyCode)
+        return value.flatMap { $0.isEmpty ? nil : $0.uppercased() } ?? Self.keyLabels[keyCode]!
+    }
+
+    @MainActor var displayString: String {
         var result = ""
         if modifiers.contains(.control) { result += "⌃" }
         if modifiers.contains(.option) { result += "⌥" }

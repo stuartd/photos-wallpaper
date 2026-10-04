@@ -270,7 +270,7 @@ extension PhotosWallpaperTests {
         #expect(result.albumOpener.openPhotosCallCount == 1)
     }
 
-    @Test func photosAlbumOpenerTargetsThePhotosWallpaperAlbum() {
+    @Test func photosAlbumOpenerTargetsThePhotosWallpaperAlbum() async {
         var executedScripts: [String] = []
         var openPhotosCallCount = 0
         var invocations: [String] = []
@@ -286,7 +286,7 @@ extension PhotosWallpaperTests {
                 return true
             })
 
-        #expect(opener.openPhotosWallpaperAlbum())
+        #expect(await opener.openPhotosWallpaperAlbum())
         #expect(executedScripts.count == 1)
         #expect(executedScripts[0].contains("tell application \"/System/Applications/Photos.app\""))
         #expect(executedScripts[0].contains("every album whose name is \"Photos Wallpaper\""))

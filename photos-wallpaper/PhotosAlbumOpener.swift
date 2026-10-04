@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 protocol PhotosAlbumOpening {
-    func openPhotosWallpaperAlbum() -> Bool
+    func openPhotosWallpaperAlbum() async -> Bool
     func openPhotosApplication() -> Bool
 }
 
@@ -11,7 +11,8 @@ protocol PhotosAlbumOpening {
 final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
     static let albumTitle = "Photos Wallpaper"
 
-    private let runAppleScript: (String) -> Bool
+    private let runAppleScript: (String) async -> Bool
+    nonisolated private static let scriptQueue = DispatchQueue(label: "photos-wallpaper.apple-script", qos: .userInitiated)
     private let openApplication: () -> Bool
 
     convenience init() {
@@ -20,13 +21,13 @@ final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
             openApplication: Self.openPhotosApplication)
     }
 
-    init(runAppleScript: @escaping (String) -> Bool,
+    init(runAppleScript: @escaping (String) async -> Bool,
          openApplication: @escaping () -> Bool) {
         self.runAppleScript = runAppleScript
         self.openApplication = openApplication
     }
 
-    func openPhotosWallpaperAlbum() -> Bool {
+    func openPhotosWallpaperAlbum() async -> Bool {
         // Opening the application sends the same kind of request as choosing Photos from the
         // Dock. Unlike AppleScript's `activate`, it also gives a minimized Photos window a chance
         // to return to the screen. Run the album script afterwards so the requested album remains
@@ -35,16 +36,25 @@ final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
             debugLog("AppKitPhotosAlbumOpener: could not bring Photos forward before selecting the album.")
         }
 
+        let identifier = UserDefaults.standard.string(forKey: "photosWallpaperAlbumIdentifier")
+        let escapedIdentifier = (identifier ?? "").replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         let source = """
+        with timeout of 20 seconds
         tell application "/System/Applications/Photos.app"
             set matchingAlbums to every album whose name is "\(Self.albumTitle)"
             if (count of matchingAlbums) is 0 then error "\(Self.albumTitle) album was not found."
+            if (count of matchingAlbums) > 1 then
+                set matchingAlbums to every album whose id is "\(escapedIdentifier)"
+                if (count of matchingAlbums) is not 1 then error "More than one Photos Wallpaper album exists. Select the album manually in Photos."
+            end if
             spotlight item 1 of matchingAlbums
             activate
         end tell
+        end timeout
         """
 
-        let didOpen = runAppleScript(source)
+        let didOpen = await runAppleScript(source)
         if didOpen {
             debugLog("AppKitPhotosAlbumOpener: opened the Photos Wallpaper album in Photos.")
         } else {
@@ -63,18 +73,23 @@ final class AppKitPhotosAlbumOpener: PhotosAlbumOpening {
         return didOpen
     }
 
-    private static func executeAppleScript(_ source: String) -> Bool {
-        guard let script = NSAppleScript(source: source) else {
-            debugLog("AppKitPhotosAlbumOpener: could not create the Photos album AppleScript.")
-            return false
+    nonisolated private static func executeAppleScript(_ source: String) async -> Bool {
+        // NSAppleScript supports secondary threads when all script work is serialized.
+        // Apple DTS: https://developer.apple.com/forums/thread/759287
+        // Keep creation, execution and disposal on the same queue. Apple events have an
+        // explicit timeout in the script; no AppKit UI work is done on this queue.
+        await withCheckedContinuation { continuation in
+            scriptQueue.async {
+                let success = autoreleasepool {
+                    guard let script = NSAppleScript(source: source) else { return false }
+                    var errorInfo: NSDictionary?
+                    script.executeAndReturnError(&errorInfo)
+                    if let errorInfo { debugLog("Photos album AppleScript failed: \(errorInfo)") }
+                    return errorInfo == nil
+                }
+                continuation.resume(returning: success)
+            }
         }
-
-        var errorInfo: NSDictionary?
-        script.executeAndReturnError(&errorInfo)
-        guard let errorInfo else { return true }
-
-        debugLog("AppKitPhotosAlbumOpener: Photos album AppleScript failed: \(errorInfo).")
-        return false
     }
 
     private static func openPhotosApplication() -> Bool {

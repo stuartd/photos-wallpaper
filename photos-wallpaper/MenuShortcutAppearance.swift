@@ -47,8 +47,10 @@ final class MenuShortcutAppearance {
                     }
                     self.prepare(menu)
                     if notification.name == NSMenu.didBeginTrackingNotification {
-                        self.trackingMenus.append(menu)
-                        self.startTrackingShortcut()
+                        if self.containsShortcut(menu) || self.trackingMenus.contains(where: { self.containsMenu(menu, in: $0) }) {
+                            self.trackingMenus.append(menu)
+                            self.startTrackingShortcut()
+                        }
                     }
                 }
             })
@@ -132,6 +134,14 @@ final class MenuShortcutAppearance {
         action()
     }
 
+    private func containsShortcut(_ menu: NSMenu) -> Bool {
+        menu.items.contains { $0.title == title || $0.submenu.map(containsShortcut) == true }
+    }
+
+    private func containsMenu(_ target: NSMenu, in menu: NSMenu) -> Bool {
+        menu === target || menu.items.contains { $0.submenu.map { containsMenu(target, in: $0) } == true }
+    }
+
     func prepare(_ menu: NSMenu) {
         // Assigning a view can itself post an item-change notification.
         guard !isPreparing else { return }
@@ -168,6 +178,7 @@ final class MenuShortcutView: NSView {
     private let font: NSFont
     private var hoverTrackingArea: NSTrackingArea?
     private var isHovered = false
+    private var displayedShortcut = ""
     // Custom views span the row, including the native checkmark gutter.
     private(set) var leadingInset: CGFloat = 16
 
@@ -197,6 +208,7 @@ final class MenuShortcutView: NSView {
         setAccessibilityRole(.menuItem)
         setAccessibilityLabel(item.title)
         setAccessibilityHelp(shortcut.displayString)
+        displayedShortcut = shortcut.displayString
     }
 
     required init?(coder: NSCoder) {
@@ -217,13 +229,14 @@ final class MenuShortcutView: NSView {
 
     func bind(to item: NSMenuItem, shortcut: GlobalShortcut? = nil) {
         self.item = item
-        if let shortcut, shortcut != self.shortcut {
+        if let shortcut, shortcut != self.shortcut || displayedShortcut != shortcut.displayString {
             let attributes: [NSAttributedString.Key: Any] = [.font: font]
             let titleWidth = (item.title as NSString).size(withAttributes: attributes).width
             let newWidth = (shortcut.displayString as NSString).size(withAttributes: attributes).width
             setFrameSize(NSSize(width: ceil(leadingInset + titleWidth + Self.columnGap
                                            + newWidth + Self.trailingInset), height: frame.height))
             self.shortcut = shortcut
+            displayedShortcut = shortcut.displayString
             setAccessibilityHelp(shortcut.displayString)
         }
         let updatedInset = Self.leadingInset(for: item)

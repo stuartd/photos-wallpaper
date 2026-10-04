@@ -142,7 +142,7 @@ struct GlobalShortcutValidator {
         })
     }
 
-    private static func keyboardCharacters(_ shortcut: GlobalShortcut, shifted: Bool) -> String? {
+    static func keyboardCharacters(_ shortcut: GlobalShortcut, shifted: Bool) -> String? {
         guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
               let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
             return nil

@@ -5,6 +5,7 @@ import SwiftUI
 
 @MainActor
 final class ShortcutSettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let initialError: () -> GlobalShortcutError?
     private let currentShortcut: () -> GlobalShortcut
     private let validate: (GlobalShortcut) -> GlobalShortcutError?
     private let save: (GlobalShortcut) -> GlobalShortcutError?
@@ -14,9 +15,11 @@ final class ShortcutSettingsWindowController: NSWindowController, NSWindowDelega
     init(
         currentShortcut: @escaping () -> GlobalShortcut,
         accessibilityLabel: String,
+        initialError: @escaping () -> GlobalShortcutError? = { nil },
         validate: @escaping (GlobalShortcut) -> GlobalShortcutError?,
         save: @escaping (GlobalShortcut) -> GlobalShortcutError?
     ) {
+        self.initialError = initialError
         self.currentShortcut = currentShortcut
         self.accessibilityLabel = accessibilityLabel
         self.validate = validate
@@ -68,6 +71,7 @@ final class ShortcutSettingsWindowController: NSWindowController, NSWindowDelega
         window.contentView = NSHostingView(
             rootView: ShortcutSettingsView(
                 initialShortcut: currentShortcut(),
+                initialError: initialError(),
                 accessibilityLabel: accessibilityLabel,
                 validate: validate,
                 save: { [weak self] shortcut in
@@ -96,6 +100,13 @@ final class ShortcutSettingsWindowController: NSWindowController, NSWindowDelega
         NSApplication.shared.stopModal()
     }
 
+    func refreshKeyboardLayout() {
+        if let recorder = window?.firstResponder as? ShortcutRecorderControl {
+            let current = recorder.shortcut
+            recorder.shortcut = current
+        }
+    }
+
     func captureRegisteredShortcut(_ shortcut: GlobalShortcut) -> Bool {
         guard isPresenting else { return false }
         guard let window, window.isKeyWindow,
@@ -118,12 +129,14 @@ private struct ShortcutSettingsView: View {
 
     init(
         initialShortcut: GlobalShortcut,
+        initialError: GlobalShortcutError?,
         accessibilityLabel: String,
         validate: @escaping (GlobalShortcut) -> GlobalShortcutError?,
         save: @escaping (GlobalShortcut) -> GlobalShortcutError?,
         cancel: @escaping () -> Void
     ) {
         _shortcut = State(initialValue: initialShortcut)
+        _saveError = State(initialValue: initialError)
         self.accessibilityLabel = accessibilityLabel
         self.validate = validate
         self.save = save
@@ -169,7 +182,7 @@ private struct ShortcutSettingsView: View {
         .onAppear {
             validationError = validate(shortcut)
         }
-        .onChange(of: shortcut) { newShortcut in
+        .onChange(of: shortcut) { _, newShortcut in
             validationError = validate(newShortcut)
             saveError = nil
         }

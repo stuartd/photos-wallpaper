@@ -6,7 +6,7 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
-    @Test func triggerNowSkipsWhilePreviousCycleIsStillRunning() async {
+    @Test func triggerNowReplacesPreviousCycleAndIgnoresItsLateResult() async {
         let defaults = FakeDefaults()
         let scheduler = FakeTimerScheduler()
         let photoManager = FakePhotoManager(completesImageRequestsImmediately: false)
@@ -30,15 +30,19 @@ extension PhotosWallpaperTests {
         controller.triggerNow()
         await Task.yield()
 
-        #expect(photoManager.getRandomPhotosCallCount == 1)
+        #expect(photoManager.getRandomPhotosCallCount == 2)
         #expect(photoManager.wallpaperAssignments.isEmpty)
 
+        #expect(photoManager.cancelledImageRequestCount == 1)
+        photoManager.completeFirstImageRequest()
+        #expect(photoManager.wallpaperAssignments.isEmpty)
         photoManager.completePendingImageRequests()
+        #expect(photoManager.wallpaperAssignments.count == 1)
         await Task.yield()
         controller.triggerNow()
         await Task.yield()
 
-        #expect(photoManager.getRandomPhotosCallCount == 2)
+        #expect(photoManager.getRandomPhotosCallCount == 3)
     }
 
     @Test func triggerNowAssignsWallpaperPerScreen() async {

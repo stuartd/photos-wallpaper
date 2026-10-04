@@ -50,15 +50,17 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
     case alreadyInAlbum
 }
 
+@MainActor
 protocol PhotoManaging: AnyObject {
     func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void)
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
-    func displayName(for asset: PHAsset) -> String
+    func identifier(for asset: PHAsset) -> String
+    func requestDisplayName(for asset: PHAsset, completion: @escaping @MainActor (String) -> Void)
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult
     func findPhotos(localIdentifiers: [String]) -> PhotoAssetsLookupResult
     func managedCurrentWallpaperIdentifiers() -> [String]
-    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void)
+    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping @MainActor (NSImage?) -> Void) -> PhotoImageRequest
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool
 }
@@ -72,19 +74,27 @@ protocol PhotoManaging: AnyObject {
 /// - `PHAsset`: a Photos library item; think "photo record/handle", not the image bytes themselves.
 /// - `NSImage`: AppKit's image type on macOS.
 /// - `NSScreen`: AppKit's representation of one connected display.
+@MainActor
 final class PhotoManager: PhotoManaging {
     static let shared = PhotoManager()
     private static let photosWallpaperAlbumTitle = "Photos Wallpaper"
 
     private let wallpaperManager: WallpaperManaging
-    private let wallpaperCacheLock = NSLock()
+    private let screenProvider: ScreenProviding
+    private let cacheDirectoryURL: URL?
     private var allPhotos: PHFetchResult<PHAsset>?
     private var hasRequestedPhotoAccess = false
-    private var activeWallpaperFilenamesByScreen = [String: String]()
+    private let albumQueue = AlbumRequestQueue()
+    private var albumIdentifier: String?
+    private let metadataQueue = DispatchQueue(label: "photos-wallpaper.metadata", qos: .utility)
     private var photoAuthorizationChangeHandlers: [() -> Void] = []
 
-    init(wallpaperManager: WallpaperManaging = WallpaperManager()) {
-        self.wallpaperManager = wallpaperManager
+    init(wallpaperManager: WallpaperManaging? = nil,
+         screenProvider: ScreenProviding? = nil,
+         cacheDirectoryURL: URL? = nil) {
+        self.wallpaperManager = wallpaperManager ?? WallpaperManager()
+        self.screenProvider = screenProvider ?? AppKitScreenProvider()
+        self.cacheDirectoryURL = cacheDirectoryURL
     }
 
     func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void) {
@@ -139,27 +149,25 @@ final class PhotoManager: PhotoManaging {
     /// exposes the original asset filename such as `IMG_6790.HEIC`. The label includes creation
     /// date when available for human lookup in Photos, plus the Photos `localIdentifier` as a
     /// technical fallback for exact disambiguation.
-    func displayName(for asset: PHAsset) -> String {
-        // Perform the potentially expensive filename lookup off the main thread to avoid
-        // Photos.framework fetching on demand on the main queue.
-        let filename: String? = {
-            let fetch: () -> String? = {
-                PHAssetResource.assetResources(for: asset).first?.originalFilename
-            }
-            if Thread.isMainThread {
-                return DispatchQueue.global(qos: .userInitiated).sync(execute: fetch)
-            } else {
-                return fetch()
-            }
-        }()
+    func identifier(for asset: PHAsset) -> String { asset.localIdentifier }
 
-        if let filename = filename {
-            return PhotoHistoryAssetDescriptionFormatter.string(filename: filename,
-                                                                creationDate: asset.creationDate,
-                                                                localIdentifier: asset.localIdentifier,
-                                                                dateFormatter: Self.historyAssetDateFormatter)
+    func requestDisplayName(for asset: PHAsset, completion: @escaping @MainActor (String) -> Void) {
+        metadataQueue.async {
+            let name = Self.assetDescription(asset)
+            Task { @MainActor in completion(name) }
         }
-        return asset.localIdentifier
+    }
+
+    nonisolated private static func assetDescription(_ asset: PHAsset) -> String {
+        guard let filename = PHAssetResource.assetResources(for: asset).first?.originalFilename else {
+            return asset.localIdentifier
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "d MMM yyyy 'at' HH:mm:ss"
+        return PhotoHistoryAssetDescriptionFormatter.string(filename: filename,
+            creationDate: asset.creationDate, localIdentifier: asset.localIdentifier,
+            dateFormatter: formatter)
     }
 
     func findPhoto(localIdentifier: String) -> PhotoAssetLookupResult {
@@ -191,7 +199,7 @@ final class PhotoManager: PhotoManaging {
             return .photos([], missingIdentifierCount: 0)
         }
 
-        switch refreshPhotos() {
+        switch requestPhotoAccessIfNeeded() {
         case .ready:
             let result = PHAsset.fetchAssets(withLocalIdentifiers: trimmedIdentifiers, options: nil)
             var assetsByIdentifier = [String: PHAsset]()
@@ -224,7 +232,7 @@ final class PhotoManager: PhotoManaging {
         var identifiers: [String] = []
         var seenIdentifiers = Set<String>()
 
-        for screen in NSScreen.screens {
+        for screen in screenProvider.screens {
             guard let wallpaperURL = wallpaperManager.desktopImageURL(for: screen),
                   let identifier = Self.localIdentifier(inGeneratedWallpaperURL: wallpaperURL,
                                                         in: cacheDirectoryURL),
@@ -268,7 +276,7 @@ final class PhotoManager: PhotoManaging {
     ///
     /// The Photos API is callback-based, so this remains asynchronous even though the rest of the
     /// app mostly uses direct method calls.
-    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping (NSImage?) -> Void) {
+    func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping @MainActor (NSImage?) -> Void) -> PhotoImageRequest {
         debugLog("PhotoManager: requesting image for asset \(asset.localIdentifier) at \(Int(targetSize.width))x\(Int(targetSize.height)).")
         
         let options = PHImageRequestOptions()
@@ -278,52 +286,54 @@ final class PhotoManager: PhotoManaging {
         // than treating cloud-only assets as random nil image requests.
         options.isNetworkAccessAllowed = true
 
-        PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { image, _ in
-            if image == nil {
-                debugLog("PhotoManager: image request for asset \(asset.localIdentifier) returned no image.")
-            } else {
-                debugLog("PhotoManager: image request for asset \(asset.localIdentifier) returned an image.")
+        let manager = PHImageManager.default()
+        let requestID = manager.requestImage(for: asset, targetSize: targetSize,
+                                             contentMode: .aspectFill, options: options) { image, info in
+            // Ignore intermediate representations and deliver all state changes on the main actor.
+            guard (info?[PHImageResultIsDegradedKey] as? Bool) != true else { return }
+            let errorDescription = (info?[PHImageErrorKey] as? Error)?.localizedDescription
+            let cancelled = (info?[PHImageCancelledKey] as? Bool) == true
+            Task { @MainActor in
+                if let errorDescription { debugLog("PhotoManager: image request failed: \(errorDescription)") }
+                completion(cancelled ? nil : image)
             }
-            completion(image)
         }
+        return PhotoImageRequest { manager.cancelImageRequest(requestID) }
     }
 
+    /// All callers share this queue, including menu actions and concurrent AppleScript commands.
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void) {
-        switch refreshPhotos() {
-        case .ready:
-            break
-        case .waitingForAuthorization:
-            completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
-            return
-        case .permissionDenied:
-            completion(.failure(PhotosWallpaperAlbumError.assetCouldNotBeAdded))
-            return
-        case .unavailable:
+        albumQueue.enqueue(operation: { [self] finish in
+            addToAlbum(asset: asset, completion: finish)
+        }, completion: completion)
+    }
+
+    private func addToAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void) {
+        guard case .ready = requestPhotoAccessIfNeeded() else {
             completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
             return
         }
-
-        if let album = Self.fetchPhotosWallpaperAlbum() {
+        if let album = fetchPhotosWallpaperAlbum() {
             add(asset: asset, to: album, completion: completion)
             return
         }
 
+        let createdIdentifier = LockedValue<String?>(nil)
+        let albumTitle = Self.photosWallpaperAlbumTitle
         PHPhotoLibrary.shared().performChanges {
-            PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: Self.photosWallpaperAlbumTitle)
-        } completionHandler: { [weak self] success, error in
-            if let error {
-                debugLog("PhotoManager: failed to create Photos Wallpaper album: \(error).")
-                completion(.failure(error))
-                return
+            let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: albumTitle)
+            createdIdentifier.set(request.placeholderForCreatedAssetCollection.localIdentifier)
+        } completionHandler: { [self] success, error in
+            Task { @MainActor in
+                guard success, error == nil, let identifier = createdIdentifier.get(),
+                      let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil).firstObject else {
+                    completion(.failure(error ?? PhotosWallpaperAlbumError.albumUnavailable))
+                    return
+                }
+                albumIdentifier = identifier
+                UserDefaults.standard.set(identifier, forKey: "photosWallpaperAlbumIdentifier")
+                add(asset: asset, to: album, completion: completion)
             }
-
-            guard success, let album = Self.fetchPhotosWallpaperAlbum() else {
-                debugLog("PhotoManager: Photos Wallpaper album was not available after creation.")
-                completion(.failure(PhotosWallpaperAlbumError.albumUnavailable))
-                return
-            }
-
-            self?.add(asset: asset, to: album, completion: completion)
         }
     }
 
@@ -332,19 +342,24 @@ final class PhotoManager: PhotoManaging {
     /// `NSWorkspace` wants a file URL rather than raw image bytes, so this method materializes a
     /// JPEG file even though the image already exists in memory.
     func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool {
+        setImageAsWallpaper(image, assetLocalIdentifier: asset.localIdentifier, for: screen)
+    }
+
+    /// Takes an identifier separately so cache ownership can be tested without a Photos library.
+    func setImageAsWallpaper(_ image: NSImage, assetLocalIdentifier: String, for screen: NSScreen) -> Bool {
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let screenIdentifier = self.screenIdentifier(for: screen)
         let screenDescription = screenNumber.map { "display ID \($0)" } ?? "unknown display"
         guard let wallpaperURL = wallpaperFileURL(forScreenIdentifier: screenIdentifier,
-                                                   assetLocalIdentifier: asset.localIdentifier) else {
+                                                   assetLocalIdentifier: assetLocalIdentifier) else {
             debugLog("PhotoManager: could not create a wallpaper filename for \(screenDescription) because the Photos identifier was empty.")
             return false
         }
 
-        // AppKit image conversion is a little old-school: NSImage -> TIFF -> bitmap rep -> JPEG.
-        guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let jpegData = bitmap.representation(using: .jpeg, properties: [:]) else {
+        // Avoid materializing and decoding a full TIFF between the raster and JPEG.
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let jpegData = NSBitmapImageRep(cgImage: cgImage)
+                .representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
             debugLog("PhotoManager: failed to convert image into JPEG data for \(screenDescription).")
             return false
         }
@@ -355,16 +370,14 @@ final class PhotoManager: PhotoManaging {
             try markAsHiddenGeneratedWallpaperResource(wallpaperURL)
             debugLog("PhotoManager: wrote wallpaper file to \(wallpaperURL.path).")
             try wallpaperManager.setWallpaper(for: screen, to: wallpaperURL, options: WallpaperOptions())
-            wallpaperCacheLock.lock()
-            defer { wallpaperCacheLock.unlock() }
-            activeWallpaperFilenamesByScreen[screenIdentifier] = wallpaperURL.lastPathComponent
-            if activeWallpaperFilenamesByScreen.count >= NSScreen.screens.count {
-                removeStaleWallpaperCacheFiles()
-                removeLegacyWallpaperCacheFiles()
-            }
+            removeStaleWallpaperCacheFiles(protecting: wallpaperURL)
             debugLog("PhotoManager: set the wallpaper on \(screenDescription).")
             return true
         } catch {
+            // A failed application must not leak the newly generated UUID-named file.
+            if !screenProvider.screens.contains(where: { wallpaperManager.desktopImageURL(for: $0) == wallpaperURL }) {
+                try? FileManager.default.removeItem(at: wallpaperURL)
+            }
             debugLog("PhotoManager: failed to set the wallpaper on \(screenDescription): \(error).")
             return false
         }
@@ -423,6 +436,7 @@ final class PhotoManager: PhotoManaging {
     }
 
     private func wallpaperCacheDirectoryURL() -> URL {
+        if let cacheDirectoryURL { return cacheDirectoryURL }
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
         return applicationSupport
@@ -443,29 +457,23 @@ final class PhotoManager: PhotoManaging {
         try mutableURL.setResourceValues(values)
     }
 
-    private func removeStaleWallpaperCacheFiles() {
-        let cacheDirectory = wallpaperCacheDirectoryURL()
-        guard let contents = try? FileManager.default.contentsOfDirectory(at: cacheDirectory,
-                                                                          includingPropertiesForKeys: nil) else {
-            return
-        }
-
-        let activeWallpaperFilenames = Set(activeWallpaperFilenamesByScreen.values)
-        for url in contents where isGeneratedWallpaperCacheFile(url) && !activeWallpaperFilenames.contains(url.lastPathComponent) {
-            removeWallpaperCacheFile(url)
-        }
-    }
-
-    private func removeLegacyWallpaperCacheFiles() {
-        let legacyCacheDirectory = wallpaperCacheDirectoryURL().deletingLastPathComponent()
-        guard let contents = try? FileManager.default.contentsOfDirectory(at: legacyCacheDirectory,
-                                                                          includingPropertiesForKeys: nil,
-                                                                          options: [.skipsHiddenFiles]) else {
-            return
-        }
-
-        for url in contents where isGeneratedWallpaperCacheFile(url) {
-            removeWallpaperCacheFile(url)
+    private func removeStaleWallpaperCacheFiles(protecting appliedURL: URL) {
+        let cache = wallpaperCacheDirectoryURL()
+        var protected = Set(screenProvider.screens.compactMap { wallpaperManager.desktopImageURL(for: $0)?.standardizedFileURL })
+        protected.insert(appliedURL.standardizedFileURL)
+        // Protect real current URLs, regardless of process lifetime or monitor count. Keep the
+        // latest file per display and a seven-day grace period for other Spaces/disconnected screens.
+        for directory in [cache, cache.deletingLastPathComponent()] {
+            guard let contents = try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]) else { continue }
+            let files = contents.filter { isGeneratedWallpaperCacheFile($0) }.compactMap { url -> WallpaperCacheFile? in
+                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey]),
+                      values.isRegularFile == true, let date = values.contentModificationDate else { return nil }
+                return WallpaperCacheFile(url: url, modifiedAt: date)
+            }
+            for url in WallpaperCachePolicy.removableFiles(files, protectedURLs: protected, now: Date()) {
+                removeWallpaperCacheFile(url)
+            }
         }
     }
 
@@ -527,9 +535,9 @@ final class PhotoManager: PhotoManaging {
 
         guard !hasRequestedPhotoAccess else { return .waitingForAuthorization }
         hasRequestedPhotoAccess = true
-        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
-            debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
             DispatchQueue.main.async { [weak self] in
+                debugLog("PhotoManager: Photos authorization changed to \(Self.photoAuthorizationDescription(for: status)).")
                 self?.photoAuthorizationChangeHandlers.forEach { $0() }
             }
         }
@@ -542,10 +550,24 @@ final class PhotoManager: PhotoManaging {
         return PHAsset.fetchAssets(with: .image, options: fetchOptions)
     }
 
-    private static func fetchPhotosWallpaperAlbum() -> PHAssetCollection? {
+    private func fetchPhotosWallpaperAlbum() -> PHAssetCollection? {
+        let identifier = albumIdentifier ?? UserDefaults.standard.string(forKey: "photosWallpaperAlbumIdentifier")
+        if let identifier,
+           let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil).firstObject,
+           album.localizedTitle == Self.photosWallpaperAlbumTitle {
+            return album
+        }
         let options = PHFetchOptions()
-        options.predicate = NSPredicate(format: "title = %@", photosWallpaperAlbumTitle)
-        return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options).firstObject
+        options.predicate = NSPredicate(format: "title = %@", Self.photosWallpaperAlbumTitle)
+        let albums = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options)
+        var candidates: [PHAssetCollection] = []
+        albums.enumerateObjects { album, _, _ in candidates.append(album) }
+        let album = candidates.sorted { $0.localIdentifier < $1.localIdentifier }.first
+        if let album {
+            albumIdentifier = album.localIdentifier
+            UserDefaults.standard.set(album.localIdentifier, forKey: "photosWallpaperAlbumIdentifier")
+        }
+        return album
     }
 
     private static func album(_ album: PHAssetCollection, contains asset: PHAsset) -> Bool {
@@ -566,24 +588,16 @@ final class PhotoManager: PhotoManaging {
             return
         }
 
+        let didCreateRequest = LockedValue(false)
         PHPhotoLibrary.shared().performChanges {
             guard let changeRequest = PHAssetCollectionChangeRequest(for: album) else { return }
+            didCreateRequest.set(true)
             changeRequest.addAssets([asset] as NSArray)
         } completionHandler: { success, error in
-            if let error {
-                debugLog("PhotoManager: failed to add asset \(asset.localIdentifier) to Photos Wallpaper album: \(error).")
-                completion(.failure(error))
-                return
+            Task { @MainActor in
+                completion(AlbumMutationOutcome.result(transactionSucceeded: success,
+                    requestCreated: didCreateRequest.get(), containsAsset: Self.album(album, contains: asset), error: error))
             }
-
-            guard success else {
-                debugLog("PhotoManager: Photos did not add asset \(asset.localIdentifier) to Photos Wallpaper album.")
-                completion(.failure(PhotosWallpaperAlbumError.assetCouldNotBeAdded))
-                return
-            }
-
-            debugLog("PhotoManager: added asset \(asset.localIdentifier) to Photos Wallpaper album.")
-            completion(.success(.added))
         }
     }
 
@@ -608,10 +622,4 @@ final class PhotoManager: PhotoManaging {
         }
     }
 
-    private static let historyAssetDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.dateFormat = "d MMM yyyy 'at' HH:mm:ss"
-        return formatter
-    }()
 }

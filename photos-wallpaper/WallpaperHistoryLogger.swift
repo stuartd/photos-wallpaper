@@ -1,12 +1,15 @@
 import Foundation
 import AppKit
 
+@MainActor
 protocol WallpaperHistoryLogging {
+    func rememberAppliedWallpaper(localIdentifier: String, displayIdentifier: String)
+    func recordWallpaperDetails(photoName: String, screenName: String, screenCount: Int, timestamp: Date)
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date)
     func openHistoryLog()
 }
 
-struct PhotoHistoryAssetDescriptionFormatter {
+nonisolated struct PhotoHistoryAssetDescriptionFormatter {
     private init() {}
 
     private static let localIdentifierRegex = try! NSRegularExpression(
@@ -45,7 +48,7 @@ struct PhotoHistoryAssetDescriptionFormatter {
     }
 }
 
-struct WallpaperHistoryEntryFormatter {
+nonisolated struct WallpaperHistoryEntryFormatter {
     private init() {}
 
     private static let identifierMarker = "id:"
@@ -77,7 +80,7 @@ struct WallpaperHistoryEntryFormatter {
     }
 }
 
-func debugLog(_ message: @autoclosure () -> String) {
+nonisolated func debugLog(_ message: @autoclosure () -> String) {
     let text = message()
     AppRuntimeLogger.shared.record(text)
 
@@ -87,7 +90,7 @@ func debugLog(_ message: @autoclosure () -> String) {
 }
 
 /// Appends to a plain-text log file and keeps only a bounded recent tail before it grows without bound.
-final class BoundedLogFile {
+nonisolated final class BoundedLogFile {
     private let logURL: URL
     private let fileManager: FileManager
     private let maxSizeBytes: UInt64
@@ -154,7 +157,7 @@ final class BoundedLogFile {
     }
 }
 
-private enum AppLogStorage {
+nonisolated private enum AppLogStorage {
     static func directoryURL(fileManager: FileManager) -> URL {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return fileManager.temporaryDirectory
@@ -169,13 +172,34 @@ private enum AppLogStorage {
 }
 
 /// Shows plain-text app logs in a read-only window owned by Photos Wallpaper.
-final class PlainTextLogWindow {
+@MainActor
+final class PlainTextLogWindow: NSObject, NSWindowDelegate {
     private let title: String
     private var window: NSWindow?
     private weak var textView: NSTextView?
+    private var refreshTask: Task<Void, Never>?
+
+    var isVisible: Bool { window?.isVisible == true }
+
+    func follow(_ load: @escaping @Sendable () async -> String?) {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard let self, self.isVisible else { return }
+                if let text = await load(), !Task.isCancelled { self.update(with: text) }
+            }
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
 
     init(title: String) {
         self.title = title
+        super.init()
     }
 
     @MainActor
@@ -196,6 +220,7 @@ final class PlainTextLogWindow {
 
         let window = NSWindow(contentViewController: NSViewController())
         window.title = title
+        window.delegate = self
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.contentView = scrollView
         window.setContentSize(Self.windowSize(for: text, font: font))
@@ -265,7 +290,7 @@ final class PlainTextLogWindow {
         if wasNearBottom {
             scrollToBottom(textView)
         } else if let previousFirstVisibleCharacterIndex {
-            let characterIndex = min(previousFirstVisibleCharacterIndex, max(textView.string.count - 1, 0))
+            let characterIndex = min(previousFirstVisibleCharacterIndex, max((textView.string as NSString).length - 1, 0))
             textView.scrollRangeToVisible(NSRange(location: characterIndex, length: 0))
         }
     }
@@ -337,7 +362,7 @@ final class PlainTextLogWindow {
 }
 
 /// Appends a plain-text runtime log for diagnosing what the app did while running.
-final class AppRuntimeLogger {
+nonisolated final class AppRuntimeLogger: @unchecked Sendable {
     static let shared = AppRuntimeLogger()
 
     private static let defaultMaxLogSizeBytes: UInt64 = 5 * 1024 * 1024
@@ -345,9 +370,10 @@ final class AppRuntimeLogger {
     private static let sessionLogExplanation = "Runtime log. This file starts fresh each time Photos Wallpaper launches."
 
     private let logURL: URL
+    private let readLog: @Sendable (URL) -> String?
     private let logFile: BoundedLogFile
     private let dateFormatter: DateFormatter
-    private let logWindow = PlainTextLogWindow(title: "Photos Wallpaper Runtime Log")
+    @MainActor private var logWindow: PlainTextLogWindow?
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.runtime-log")
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
@@ -356,8 +382,10 @@ final class AppRuntimeLogger {
         self.init(logURL: logURL, fileManager: fileManager, maxLogSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
     }
 
-    init(logURL: URL, fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
+    init(logURL: URL, fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount,
+         readLog: @escaping @Sendable (URL) -> String? = { try? String(contentsOf: $0, encoding: .utf8) }) {
         self.logURL = logURL
+        self.readLog = readLog
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
 
         let formatter = DateFormatter()
@@ -372,30 +400,32 @@ final class AppRuntimeLogger {
     func record(_ message: String, timestamp: Date = Date()) {
         writeQueue.async {
             self.write("[\(self.dateFormatter.string(from: timestamp))] \(message)\n")
-            self.updateOpenRuntimeLogWindow()
         }
     }
 
+    @MainActor
     func openRuntimeLog() {
-        do {
-            let runtimeText = try writeQueue.sync {
-                try logFile.ensureLogFileExists()
-                return try String(contentsOf: logURL, encoding: .utf8)
+        if logWindow == nil { logWindow = PlainTextLogWindow(title: "Photos Wallpaper Runtime Log") }
+        Task { [self] in
+            guard let text = await readDisplayText() else { return }
+            logWindow?.show(text)
+            logWindow?.follow { [weak self] in await self?.readDisplayText() }
+        }
+    }
+
+    private func readDisplayText() async -> String? {
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                let text = self.readLog(self.logURL)
+                continuation.resume(returning: text.map(Self.displayText))
             }
-            DispatchQueue.main.async {
-                self.logWindow.show(Self.displayText(for: runtimeText))
-            }
-        } catch {
-            #if DEBUG
-            print("AppRuntimeLogger: failed to open the runtime log: \(error).")
-            #endif
         }
     }
 
     #if DEBUG
     @MainActor
     var displayedRuntimeLogTextForTesting: String? {
-        logWindow.displayedTextForTesting
+        logWindow?.displayedTextForTesting
     }
     #endif
 
@@ -419,25 +449,19 @@ final class AppRuntimeLogger {
         }
     }
 
-    private func updateOpenRuntimeLogWindow() {
-        guard let runtimeText = try? String(contentsOf: logURL, encoding: .utf8) else { return }
-        DispatchQueue.main.async {
-            self.logWindow.update(with: Self.displayText(for: runtimeText))
-        }
-    }
-
     static func displayText(for logText: String) -> String {
         sessionLogExplanation + "\n\n" + logText
     }
 }
 
 /// Appends a plain-text history file for wallpaper changes in the current app session.
-final class WallpaperHistoryLogger: WallpaperHistoryLogging {
+nonisolated final class WallpaperHistoryLogger: @unchecked Sendable, WallpaperHistoryLogging {
     private static let defaultMaxLogSizeBytes: UInt64 = 10 * 1024 * 1024
     private static let defaultRetainedLineCount = 100
     private static let sessionHistoryExplanation = "Wallpaper history. This list starts fresh each time Photos Wallpaper launches."
 
     private let logURL: URL
+    private let readLog: @Sendable (URL) -> String?
     private let logFile: BoundedLogFile
     private let currentWallpapersURL: URL
     private let fileManager: FileManager
@@ -445,7 +469,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     private var currentWallpaperIdentifiersByScreen = [String: String]()
     private var currentSessionWallpaperIdentifiersByScreen = [String: String]()
     private let writeQueue = DispatchQueue(label: "photos-wallpaper.history-log")
-    private let historyWindow = PlainTextLogWindow(title: "Photos Wallpaper History")
+    @MainActor private var historyWindow: PlainTextLogWindow?
 
     convenience init(fileManager: FileManager = .default, maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes, retainedLineCount: Int = defaultRetainedLineCount) {
         let directoryURL = AppLogStorage.directoryURL(fileManager: fileManager)
@@ -462,8 +486,10 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
          currentWallpapersURL: URL? = nil,
          fileManager: FileManager = .default,
          maxLogSizeBytes: UInt64 = defaultMaxLogSizeBytes,
-         retainedLineCount: Int = defaultRetainedLineCount) {
+         retainedLineCount: Int = defaultRetainedLineCount,
+         readLog: @escaping @Sendable (URL) -> String? = { try? String(contentsOf: $0, encoding: .utf8) }) {
         self.logURL = logURL
+        self.readLog = readLog
         self.logFile = BoundedLogFile(logURL: logURL, fileManager: fileManager, maxSizeBytes: maxLogSizeBytes, retainedLineCount: retainedLineCount)
         self.currentWallpapersURL = currentWallpapersURL
             ?? logURL.deletingLastPathComponent().appendingPathComponent("current-wallpapers.json")
@@ -478,17 +504,27 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         loadPersistedCurrentWallpapers()
     }
 
+    /// Kept for legacy history import/tests. Live applications use structured state plus details.
     func recordWallpaperChange(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
-        let historyText = writeQueue.sync {
+        writeQueue.sync {
             writeWallpaperChange(photoName: photoName, screenName: screenName, screenCount: screenCount, timestamp: timestamp)
             rememberCurrentWallpaper(photoName: photoName, screenName: screenName, screenCount: screenCount)
-            return try? String(contentsOf: logURL, encoding: .utf8)
         }
+    }
 
-        if let historyText {
-            DispatchQueue.main.async {
-                self.updateOpenHistoryWindow(with: historyText)
-            }
+    func rememberAppliedWallpaper(localIdentifier: String, displayIdentifier: String) {
+        writeQueue.sync {
+            currentWallpaperIdentifiersByScreen[displayIdentifier] = localIdentifier
+            currentSessionWallpaperIdentifiersByScreen[displayIdentifier] = localIdentifier
+        }
+        writeQueue.async { self.persistCurrentWallpapers() }
+    }
+
+    /// Metadata enrichment must never mutate the operational current-wallpaper state.
+    func recordWallpaperDetails(photoName: String, screenName: String, screenCount: Int, timestamp: Date) {
+        writeQueue.async {
+            self.writeWallpaperChange(photoName: photoName, screenName: screenName,
+                                      screenCount: screenCount, timestamp: timestamp)
         }
     }
 
@@ -621,27 +657,29 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
         }
     }
 
-    /// Ensures the history file exists and opens it in a read-only app window.
+    @MainActor
     func openHistoryLog() {
-        do {
-            let historyText = try writeQueue.sync {
-                try logFile.ensureLogFileExists()
-                return try String(contentsOf: logURL, encoding: .utf8)
-            }
-            historyWindow.show(Self.displayText(for: historyText))
-        } catch {
-            debugLog("WallpaperHistoryLogger: failed to open the history log: \(error).")
+        if historyWindow == nil { historyWindow = PlainTextLogWindow(title: "Photos Wallpaper History") }
+        Task { [self] in
+            guard let text = await readDisplayText() else { return }
+            historyWindow?.show(text)
+            historyWindow?.follow { [weak self] in await self?.readDisplayText() }
         }
     }
 
-    private func updateOpenHistoryWindow(with historyText: String) {
-        historyWindow.update(with: Self.displayText(for: historyText))
+    private func readDisplayText() async -> String? {
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                let text = self.readLog(self.logURL)
+                continuation.resume(returning: text.map(Self.displayText))
+            }
+        }
     }
 
     #if DEBUG
     @MainActor
     var displayedHistoryTextForTesting: String? {
-        historyWindow.displayedTextForTesting
+        historyWindow?.displayedTextForTesting
     }
     #endif
 
@@ -650,7 +688,7 @@ final class WallpaperHistoryLogger: WallpaperHistoryLogging {
     }
 }
 
-private struct PersistedCurrentWallpaper: Codable {
+nonisolated private struct PersistedCurrentWallpaper: Codable {
     let screenName: String
     let localIdentifier: String
 }

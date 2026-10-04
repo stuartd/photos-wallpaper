@@ -111,6 +111,7 @@ extension PhotosWallpaperTests {
     @Test func globalShortcutClosesTrackingMenuBeforeStartingAction() {
         let center = NotificationCenter()
         let menu = FakeTrackingMenu()
+        menu.addItem(NSMenuItem(title: "Test shortcut action", action: nil, keyEquivalent: "w"))
         var activationCount = 0
         let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: .defaultShortcut,
                                                 notificationCenter: center) {
@@ -143,6 +144,7 @@ extension PhotosWallpaperTests {
     @Test func menuTrackingSwitchesShortcutDeliveryAndRestoresItAfterClosing() {
         let center = NotificationCenter()
         let menu = FakeTrackingMenu()
+        menu.addItem(NSMenuItem(title: "Test shortcut action", action: nil, keyEquivalent: "w"))
         var transitions: [Bool] = []
         let appearance = MenuShortcutAppearance(title: "Test shortcut action", shortcut: .defaultShortcut,
                                                 notificationCenter: center) {

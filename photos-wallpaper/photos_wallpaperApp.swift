@@ -109,12 +109,13 @@ struct photos_wallpaperApp: App {
     @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
     @State private var isStartAtLoginPromptRetryScheduled = false
     private let historyLogger: WallpaperHistoryLogger
-    private let runtimeLogger = AppRuntimeLogger.shared
+    private let runtimeLogger: AppRuntimeLogger
     private let documentOpener = AppDocumentOpener()
     @StateObject private var shortcutController: WallpaperShortcutController
 
     init() {
         self.singleInstanceLock = Self.acquireSingleInstanceLock()
+        self.runtimeLogger = AppRuntimeLogger.shared
 
         let firstRunStartupController = FirstRunStartupController()
         let historyLogger = WallpaperHistoryLogger()
@@ -141,12 +142,12 @@ struct photos_wallpaperApp: App {
             debugLog("photos_wallpaperApp: acquired single-instance lock at \(lock.lockURL.path).")
             return lock
         case .alreadyLocked:
-            debugLog("photos_wallpaperApp: another instance is already running; terminating this launch.")
             ExistingAppInstanceActivator().activateExistingInstance()
             Darwin.exit(EXIT_SUCCESS)
         case .failed(let error):
-            debugLog("photos_wallpaperApp: could not acquire single-instance lock: \(error.localizedDescription).")
-            return nil
+            // Fail closed: shared logs/cache must never have two writers.
+            NSLog("Photos Wallpaper could not acquire its instance lock: %@", error.localizedDescription)
+            Darwin.exit(EXIT_FAILURE)
         }
     }
 
@@ -170,6 +171,7 @@ struct photos_wallpaperApp: App {
             .disabled(isMenuInteractionDisabled)
             .onAppear {
                 prepareForUserInitiatedSurface()
+                loginItemManager.refreshStatus()
                 promptToEnableStartAtLoginIfNeeded(for: cycleController.frequency)
             }
             .onChange(of: cycleController.isWaitingForPhotoAuthorization) { _, isWaiting in
@@ -243,6 +245,7 @@ struct photos_wallpaperApp: App {
 
     private var isMenuInteractionDisabled: Bool {
         isAboutPanelOpen
+            || currentWallpaperAlbumController.isBusy
             || currentWallpaperAlbumController.isPresentingAlert
             || currentWallpaperAlbumController.isWaitingForAuthorization
     }

@@ -58,7 +58,7 @@ if [[ -d "${APP_SUPPORT_DIR}" ]]; then
         else
             echo "Could not remove protected wallpaper cache file: ${cache_file}"
         fi
-    done < <(find "${APP_SUPPORT_DIR}" -maxdepth 1 -type f -name 'current-wallpaper-*.jpg' -print)
+    done < <(generated_wallpaper_cache_files)
 
     if [[ "${removed_any}" == false ]]; then
         echo "No local logs/cache/history files found."

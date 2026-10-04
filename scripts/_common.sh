@@ -24,6 +24,9 @@ KNOWN_DEFAULTS_DOMAINS=(
 )
 
 KNOWN_DEFAULTS_KEYS=(
+    "GlobalShortcut.KeyCode"
+    "GlobalShortcut.Modifiers"
+    "photosWallpaperAlbumIdentifier"
     "cycleFrequency"
     "didShowMenuBarWelcomeWindow"
     "dismissedStartAtLoginPrompt"
@@ -35,6 +38,14 @@ KNOWN_DEFAULTS_KEYS=(
 
 git_commit() {
     git -C "$REPO_ROOT" rev-parse --short HEAD
+}
+
+generated_wallpaper_cache_files() {
+    [[ -d "${APP_SUPPORT_DIR}" ]] || return 0
+    find "${APP_SUPPORT_DIR}" -maxdepth 1 -type f -name 'current-wallpaper-*.jpg' -print
+    if [[ -d "${APP_SUPPORT_DIR}/.WallpaperCache" ]]; then
+        find "${APP_SUPPORT_DIR}/.WallpaperCache" -maxdepth 1 -type f -name 'current-wallpaper-*.jpg' -print
+    fi
 }
 
 matching_defaults_domains() {

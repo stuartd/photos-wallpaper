@@ -19,6 +19,7 @@ protocol WallpaperCycleControlling: AnyObject, ObservableObject {
 protocol WallpaperCycleNotifying {
     func notifyNoPhotosAvailable()
     func notifyPhotoLibraryPermissionDenied()
+    func notifyWallpaperChangeFailed()
 }
 
 /// Production warning presenter used when the app needs to explain why wallpaper selection failed.
@@ -38,6 +39,12 @@ final class UserNotificationWallpaperCycleNotifier: NSObject, WallpaperCycleNoti
         queueNotification(identifier: "no-photos-available-\(UUID().uuidString)",
                           title: "No photos available",
                           body: "Photos Wallpaper couldn’t find an available photo in your Photos library.")
+    }
+
+    func notifyWallpaperChangeFailed() {
+        queueNotification(identifier: "wallpaper-change-failed",
+                          title: "Wallpaper could not be changed",
+                          body: "The photo could not be loaded or applied. Try Change Wallpaper Now again.")
     }
 
     func notifyPhotoLibraryPermissionDenied() {
@@ -594,6 +601,10 @@ enum WallpaperPhotoSelector {
             // Persist the newly selected frequency so the next launch resumes the same schedule.
             defaults.set(frequency?.rawValue, forKey: Self.defaultsKey)
             if frequency != oldValue {
+                cancelCycle()
+                if pendingAuthorizationRetryTrigger != .manual {
+                    pendingAuthorizationRetryTrigger = nil
+                }
                 clearStoredScheduledCycleDueAt()
             }
             // Rebuild the schedule trigger so the new frequency takes effect immediately.
@@ -622,7 +633,13 @@ enum WallpaperPhotoSelector {
     private let startsScheduleAutomatically: Bool
     private var lastAutomaticUnavailablePhotosReason: UnavailablePhotosReason?
     private var isCycleInProgress = false
-    private var pendingImageRequests = 0
+    private var cycleID = UUID()
+    private var outstandingImages = Set<Int>()
+    private var imageRequests: [PhotoImageRequest] = []
+    private var imageDeadline: CancellableTimer?
+    private let imageDeadlineScheduler: TimerScheduling
+    private let now: () -> Date
+    private var cycleSucceeded = false
     private var hasLoadedInitialFrequency = false
     private var pendingAuthorizationRetryTrigger: WallpaperCycleTrigger?
     private var isWaitingForSchedulePhotoAuthorization = false
@@ -721,7 +738,11 @@ enum WallpaperPhotoSelector {
          loginSessionIdentifierProvider: LoginSessionIdentifying,
          startAtLoginStatusProvider: StartAtLoginStatusProviding,
          preflightsPhotoAccessWhenScheduling: Bool = true,
-         startsScheduleAutomatically: Bool = true) {
+         startsScheduleAutomatically: Bool = true,
+         imageDeadlineScheduler: TimerScheduling? = nil,
+         now: @escaping () -> Date = Date.init) {
+        self.imageDeadlineScheduler = imageDeadlineScheduler ?? FoundationTimerScheduler()
+        self.now = now
         self.photoManager = photoManager
         self.defaults = defaults
         self.historyLogger = historyLogger
@@ -769,6 +790,7 @@ enum WallpaperPhotoSelector {
         debugLog("WallpaperCycleController: manual wallpaper refresh requested.")
         // `Task {}` starts an async unit of work while keeping the refresh on the main actor.
         Task { @MainActor in
+            self.cancelCycle()
             self.tick(trigger: .manual)
         }
     }
@@ -957,7 +979,7 @@ enum WallpaperPhotoSelector {
         if storedTimestamp > 0 {
             nextScheduledCycleDueAt = Date(timeIntervalSince1970: storedTimestamp)
         } else {
-            storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+            storeNextScheduledCycleDueAt(now().addingTimeInterval(seconds))
         }
     }
 
@@ -974,12 +996,12 @@ enum WallpaperPhotoSelector {
 
     private func deferOverdueScheduledCycleAfterLaunchIfNeeded(for frequency: CycleFrequency) {
         guard let dueAt = nextScheduledCycleDueAt,
-              Date() >= dueAt,
+              now() >= dueAt,
               let seconds = frequency.seconds else {
             return
         }
         hasLoggedDeferredScheduledCycle = false
-        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        storeNextScheduledCycleDueAt(now().addingTimeInterval(seconds))
         debugLog("WallpaperCycleController: deferred overdue scheduled cycle after app launch; next cycle follows the selected schedule.")
     }
 
@@ -1036,7 +1058,7 @@ enum WallpaperPhotoSelector {
     ///
     /// The method stays on the main actor because it touches AppKit screen objects and because the
     /// surrounding UI state (`@Published frequency`, notification gating) is actor-isolated.
-    private func tick(trigger: WallpaperCycleTrigger) {
+    private func tick(trigger: WallpaperCycleTrigger, resumingAuthorization: Bool = false) {
         if trigger.requiresActiveUserSession && !activeUserSessionProvider.appOwnsActiveConsoleSession {
             if deferScheduledCycleIfNeeded(trigger: trigger) {
                 debugLog("WallpaperCycleController: skipping \(trigger.logDescription) wallpaper cycle because this app's user session is not the active console session.")
@@ -1059,9 +1081,11 @@ enum WallpaperPhotoSelector {
             debugLog("WallpaperCycleController: skipping cycle because a previous cycle is still running.")
             return
         }
-        guard shouldRunAutomaticLoginCycle(trigger: trigger) else { return }
+        guard resumingAuthorization || shouldRunAutomaticLoginCycle(trigger: trigger) else { return }
         clearDeferredScheduledCycleIfNeeded(trigger: trigger)
         isCycleInProgress = true
+        cycleSucceeded = false
+        cycleID = UUID()
         debugLog("WallpaperCycleController: starting \(trigger.logDescription) wallpaper cycle.")
         let screens = screenProvider.screens
         debugLog("WallpaperCycleController: found \(screens.count) screen(s).")
@@ -1107,60 +1131,76 @@ enum WallpaperPhotoSelector {
         // independently after this loop starts the image fetches.
         let screenAssetPairs = Array(zip(screens, assets).enumerated())
         let screenCount = screenAssetPairs.count
-        pendingImageRequests = screenAssetPairs.count
+        let generation = cycleID
+        outstandingImages = Set(screenAssetPairs.map(\.offset))
+        imageDeadline = imageDeadlineScheduler.scheduledTimer(interval: 60, repeats: false) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.cycleID == generation, self.isCycleInProgress else { return }
+                debugLog("WallpaperCycleController: image deadline expired; cancelling outstanding requests.")
+                if trigger == .manual && !self.cycleSucceeded {
+                    self.notifier.notifyWallpaperChangeFailed()
+                }
+                self.cancelCycle()
+            }
+        }
         for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
-            let size = screenSizes[index]
+            let displayID = screen.wallpaperDisplayIdentifier
             let screenName = "Screen \(index + 1)"
-            debugLog("WallpaperCycleController: requesting image \(index + 1) for screen size \(Int(size.width))x\(Int(size.height)).")
-            // The completion closure is marked `@escaping` in the protocol, which means Photos may
-            // call it later after this function has already returned.
-            photoManager.requestImage(for: asset, targetSize: size) { [weak self, photoManager, historyLogger] image in
-                defer {
-                    Task { @MainActor [weak self] in
-                        self?.completeImageRequest()
-                    }
+            let request = photoManager.requestImage(for: asset, targetSize: screenSizes[index]) { [weak self] image in
+                guard let self, self.cycleID == generation,
+                      self.outstandingImages.remove(index) != nil else { return }
+                defer { self.completeImageRequest(trigger: trigger) }
+                guard let currentScreen = self.screenProvider.screens.first(where: {
+                    $0.wallpaperDisplayIdentifier == displayID
+                }) else { return }
+                if trigger.requiresActiveUserSession {
+                    guard self.frequency != nil,
+                          self.activeUserSessionProvider.appOwnsActiveConsoleSession,
+                          !self.screenSleepStateProvider.screensAreAsleep else { return }
                 }
-                if let image = image {
-                    debugLog("WallpaperCycleController: received image \(index + 1), applying wallpaper.")
-                    if photoManager.setImageAsWallpaper(image, from: asset, for: screen) {
-                        Task { @MainActor [weak self] in
-                            self?.clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: trigger)
-                        }
-                        // Move filename lookup off the main thread; no caching.
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            let photoName = photoManager.displayName(for: asset)
-                            historyLogger.recordWallpaperChange(photoName: photoName,
-                                                                screenName: screenName,
-                                                                screenCount: screenCount,
-                                                                timestamp: Date())
-                        }
-                    }
-                } else {
-                    debugLog("WallpaperCycleController: image request \(index + 1) returned no image.")
+                guard let image,
+                      self.photoManager.setImageAsWallpaper(image, from: asset, for: currentScreen) else { return }
+                let appliedAt = self.now()
+                self.cycleSucceeded = true
+                self.clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: trigger)
+                // Operational state is recorded before slow human-readable metadata work.
+                self.historyLogger.rememberAppliedWallpaper(localIdentifier: self.photoManager.identifier(for: asset),
+                                                            displayIdentifier: displayID)
+                self.photoManager.requestDisplayName(for: asset) { [historyLogger = self.historyLogger] name in
+                    historyLogger.recordWallpaperDetails(photoName: name, screenName: screenName,
+                                                         screenCount: screenCount, timestamp: appliedAt)
                 }
+            }
+            // A fake (or a cache hit) may complete synchronously.
+            if isCycleInProgress && cycleID == generation {
+                imageRequests.append(request)
+            } else {
+                request.cancel()
             }
         }
     }
 
     private func clearDeferredScheduledCycleAfterManualChangeIfNeeded(trigger: WallpaperCycleTrigger) {
         guard trigger == .manual,
-              let seconds = frequency?.seconds else {
+              let frequency, let seconds = frequency.seconds else {
             return
         }
         wakeCatchUpTimer?.invalidate()
         wakeCatchUpTimer = nil
         wakeGraceEndsAt = nil
         hasLoggedDeferredScheduledCycle = false
-        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
-        debugLog("WallpaperCycleController: cancelled deferred scheduled cycle after manual wallpaper change.")
+        storeNextScheduledCycleDueAt(now().addingTimeInterval(seconds))
+        timer?.invalidate()
+        scheduleTimerTrigger(for: frequency)
+        debugLog("WallpaperCycleController: restarted the schedule after manual wallpaper change.")
     }
 
     private func deferScheduledCycleIfNeeded(trigger: WallpaperCycleTrigger) -> Bool {
         guard trigger == .scheduled else { return false }
         guard !hasLoggedDeferredScheduledCycle else { return false }
         hasLoggedDeferredScheduledCycle = true
-        storeNextScheduledCycleDueAt(Date())
+        storeNextScheduledCycleDueAt(now())
         debugLog("WallpaperCycleController: deferred scheduled cycle until this app's user session becomes active.")
         return true
     }
@@ -1175,12 +1215,12 @@ enum WallpaperPhotoSelector {
             clearStoredScheduledCycleDueAt()
             return
         }
-        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        storeNextScheduledCycleDueAt(now().addingTimeInterval(seconds))
     }
 
     private func runDeferredScheduledCycleIfNeeded() {
         guard let dueAt = nextScheduledCycleDueAt else { return }
-        guard Date() >= dueAt else { return }
+        guard now() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
             if !hasLoggedDeferredScheduledCycle {
                 hasLoggedDeferredScheduledCycle = true
@@ -1201,9 +1241,9 @@ enum WallpaperPhotoSelector {
 
     private func scheduleDeferredScheduledCycleAfterWakeIfNeeded() {
         guard let dueAt = nextScheduledCycleDueAt else { return }
-        guard Date() >= dueAt else { return }
+        guard now() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else {
-            wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
+            wakeGraceEndsAt = now().addingTimeInterval(Self.wakeCatchUpDelay)
             debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after wake; waiting for this app's user session to become active.")
             return
         }
@@ -1212,13 +1252,13 @@ enum WallpaperPhotoSelector {
             scheduleWakeReadinessRetryTimer()
             return
         }
-        wakeGraceEndsAt = Date().addingTimeInterval(Self.wakeCatchUpDelay)
+        wakeGraceEndsAt = now().addingTimeInterval(Self.wakeCatchUpDelay)
         scheduleWakeCatchUpTimer()
     }
 
     private func scheduleDeferredScheduledCycleAfterSessionActivationIfNeeded() {
         guard let dueAt = nextScheduledCycleDueAt else { return }
-        guard Date() >= dueAt else { return }
+        guard now() >= dueAt else { return }
         guard activeUserSessionProvider.appOwnsActiveConsoleSession else { return }
         guard !screenSleepStateProvider.screensAreAsleep else {
             debugLog("WallpaperCycleController: deferred scheduled cycle is overdue after session activation but the screens are asleep.")
@@ -1240,7 +1280,7 @@ enum WallpaperPhotoSelector {
         }
         timer?.invalidate()
         timer = nil
-        storeNextScheduledCycleDueAt(Date().addingTimeInterval(seconds))
+        storeNextScheduledCycleDueAt(now().addingTimeInterval(seconds))
         debugLog("WallpaperCycleController: resumed scheduled cycle after session activation; next cycle follows the selected schedule.")
         scheduleTimerTrigger(for: frequency)
     }
@@ -1248,7 +1288,7 @@ enum WallpaperPhotoSelector {
     private func shouldDelayScheduledCycleForWakeGrace(trigger: WallpaperCycleTrigger) -> Bool {
         guard trigger == .scheduled,
               let graceEndsAt = wakeGraceEndsAt,
-              Date() < graceEndsAt else {
+              now() < graceEndsAt else {
             return false
         }
         debugLog("WallpaperCycleController: delaying overdue scheduled cycle until wake grace period ends.")
@@ -1261,14 +1301,14 @@ enum WallpaperPhotoSelector {
             return true
         }
 
-        let now = Date()
+        let currentTime = now()
         if let lastAutomaticLoginCycleStartedAt,
-           now.timeIntervalSince(lastAutomaticLoginCycleStartedAt) < Self.automaticLoginCycleDebounceInterval {
+           currentTime.timeIntervalSince(lastAutomaticLoginCycleStartedAt) < Self.automaticLoginCycleDebounceInterval {
             debugLog("WallpaperCycleController: skipping \(trigger.logDescription) wallpaper cycle because another automatic login cycle ran recently.")
             return false
         }
 
-        lastAutomaticLoginCycleStartedAt = now
+        lastAutomaticLoginCycleStartedAt = currentTime
         return true
     }
 
@@ -1299,7 +1339,7 @@ enum WallpaperPhotoSelector {
         guard let trigger = pendingAuthorizationRetryTrigger else { return }
         pendingAuthorizationRetryTrigger = nil
         debugLog("WallpaperCycleController: retrying wallpaper cycle after Photos authorization changed.")
-        tick(trigger: trigger)
+        tick(trigger: trigger, resumingAuthorization: true)
     }
 
     private func handlePhotoAuthorizationDidChange() {
@@ -1370,20 +1410,40 @@ enum WallpaperPhotoSelector {
         }
     }
 
-    private func completeImageRequest() {
-        pendingImageRequests -= 1
-        if pendingImageRequests <= 0 {
-            finishCycle()
+    private func completeImageRequest(trigger: WallpaperCycleTrigger) {
+        guard outstandingImages.isEmpty else { return }
+        if trigger == .manual && !cycleSucceeded {
+            notifier.notifyWallpaperChangeFailed()
         }
+        finishCycle()
+    }
+
+    private func cancelCycle() {
+        // Invalidate the generation before cancellation, which can itself invoke callbacks.
+        cycleID = UUID()
+        let requests = imageRequests
+        finishCycle()
+        requests.forEach { $0.cancel() }
     }
 
     private func finishCycle() {
-        pendingImageRequests = 0
+        imageDeadline?.invalidate()
+        imageDeadline = nil
+        imageRequests.removeAll()
+        outstandingImages.removeAll()
         isCycleInProgress = false
     }
+
 }
 
-private extension NSScreen {
+extension NSScreen {
+    var wallpaperDisplayIdentifier: String {
+        if let number = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            return number.stringValue
+        }
+        return "\(frame.origin.x)-\(frame.origin.y)-\(frame.width)-\(frame.height)"
+    }
+
     var pixelSize: CGSize {
         CGSize(width: frame.size.width * backingScaleFactor,
                height: frame.size.height * backingScaleFactor)

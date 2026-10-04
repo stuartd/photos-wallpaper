@@ -14,7 +14,8 @@ extension PhotosWallpaperTests {
         var activations = 0
         let controller = WallpaperShortcutController(
             menuTitle: photos_wallpaperApp.changeWallpaperMenuTitle, defaults: defaults,
-            backend: backend, validator: GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil })
+            backend: backend, validator: GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil }),
+            notificationCenter: NotificationCenter()
         ) { activations += 1 }
         #expect(controller.shortcut == custom)
         #expect(backend.shortcuts == [custom])
@@ -23,16 +24,18 @@ extension PhotosWallpaperTests {
     }
 
     @Test func wallpaperShortcutSavesOnlyAfterRegistrationAndUpdatesMenu() throws {
+        let menuTitle = "Test wallpaper shortcut \(UUID().uuidString)"
         let suite = "PhotosWallpaperTests.Shortcuts.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let backend = FakeHotKeyBackend()
         let controller = WallpaperShortcutController(
-            menuTitle: photos_wallpaperApp.changeWallpaperMenuTitle, defaults: defaults,
+            menuTitle: menuTitle, defaults: defaults,
             backend: backend, validator: GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil }),
+            notificationCenter: NotificationCenter(),
             action: {})
         let menu = NSMenu()
-        let item = NSMenuItem(title: photos_wallpaperApp.changeWallpaperMenuTitle, action: nil, keyEquivalent: "w")
+        let item = NSMenuItem(title: menuTitle, action: nil, keyEquivalent: "w")
         item.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(item)
         controller.menuAppearance.prepare(menu)
