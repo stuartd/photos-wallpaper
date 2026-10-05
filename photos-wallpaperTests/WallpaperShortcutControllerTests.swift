@@ -4,6 +4,49 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
+    @Test func wallpaperShortcutRejectsCommandOnlyChangesWithoutRegisteringOrSaving() throws {
+        let suite = "PhotosWallpaperTests.Shortcuts.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let backend = FakeHotKeyBackend()
+        let controller = WallpaperShortcutController(
+            menuTitle: photos_wallpaperApp.changeWallpaperMenuTitle, defaults: defaults,
+            backend: backend, validator: GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil }),
+            notificationCenter: NotificationCenter(), action: {})
+
+        for modifiers: GlobalShortcut.Modifiers in [[.command], [.command, .shift]] {
+            let shortcut = try #require(GlobalShortcut(keyCode: 1, modifiers: modifiers))
+            #expect(controller.setShortcut(shortcut) == .requiresOptionOrControl)
+            #expect(controller.shortcut == .defaultShortcut)
+            #expect(GlobalShortcutSettingsStore(defaults: defaults).load() == .defaultShortcut)
+            #expect(backend.shortcuts == [.defaultShortcut])
+            #expect(backend.events == ["install", "register"])
+        }
+    }
+
+    @Test func wallpaperShortcutRejectsSavedCommandOnlyBindingAndCanRestoreDefault() throws {
+        for modifiers: GlobalShortcut.Modifiers in [[.command], [.command, .shift]] {
+            let suite = "PhotosWallpaperTests.Shortcuts.\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let shortcut = try #require(GlobalShortcut(keyCode: 1, modifiers: modifiers))
+            GlobalShortcutSettingsStore(defaults: defaults).save(shortcut)
+            let backend = FakeHotKeyBackend()
+            let controller = WallpaperShortcutController(
+                menuTitle: photos_wallpaperApp.changeWallpaperMenuTitle, defaults: defaults,
+                backend: backend, validator: GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil }),
+                notificationCenter: NotificationCenter(), action: {})
+
+            #expect(controller.shortcut == shortcut)
+            #expect(backend.shortcuts.isEmpty)
+            #expect(controller.setShortcut(shortcut) == .requiresOptionOrControl)
+            #expect(backend.events == ["install"])
+            #expect(controller.setShortcut(.defaultShortcut) == nil)
+            #expect(backend.shortcuts == [.defaultShortcut])
+            #expect(GlobalShortcutSettingsStore(defaults: defaults).load() == .defaultShortcut)
+        }
+    }
+
     @Test func wallpaperShortcutLoadsSavedBindingAndInvokesAction() throws {
         let suite = "PhotosWallpaperTests.Shortcuts.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

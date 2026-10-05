@@ -151,7 +151,7 @@ private struct ShortcutSettingsView: View {
             ShortcutRecorderView(shortcut: $shortcut, accessibilityLabel: accessibilityLabel)
                 .frame(height: 52)
 
-            Text((validationError ?? saveError)?.message ?? "Hold one or more of Command, Option and Control, then press a letter, number or punctuation key. You can also include Shift.")
+            Text((validationError ?? saveError)?.message ?? "Hold Option or Control, then press a letter, number or punctuation key. You can also include Command and Shift.")
                 .font(.system(size: 14))
                 .foregroundStyle(validationError == nil && saveError == nil ? Color.primary : Color.red)
                 .fixedSize(horizontal: false, vertical: true)

@@ -21,7 +21,7 @@ The feature was removed in macOS 26 (Tahoe).[^2]
 - Selects random images from your Photos library and sets them as wallpaper
 - Supports multiple displays
 - You can change your wallpaper on demand, or use a preset wallpaper schedule
-- Change wallpaper from any app with Control–Option–W. Choose **Change Keyboard Shortcut…** in the menu to set your own shortcut or restore the default.
+- Change wallpaper from any app with Control–Option–W. Choose **Change Keyboard Shortcut…** in the menu to set your own shortcut or restore the default. Custom shortcuts must include Option or Control; Command and Shift are optional.
 - You can add the current wallpaper photo to a "Photos Wallpaper" album in Photos, and then use that to see the photo in context in your library.
 
 ---

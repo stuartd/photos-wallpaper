@@ -4,6 +4,7 @@ import Carbon
 import Foundation
 
 enum GlobalShortcutError: Error, Equatable, LocalizedError {
+    case requiresOptionOrControl
     case systemShortcut
     case menuItem(String)
     case systemCheckFailed(OSStatus)
@@ -17,6 +18,8 @@ enum GlobalShortcutError: Error, Equatable, LocalizedError {
 
     var message: String {
         switch self {
+        case .requiresOptionOrControl:
+            return "Include Option or Control so this shortcut doesn’t replace common app commands. You can also include Command and Shift."
         case .systemShortcut:
             return "macOS already uses this shortcut. Choose another, or change it in System Settings → Keyboard → Keyboard Shortcuts."
         case .menuItem(let title):
@@ -68,6 +71,12 @@ struct GlobalShortcutValidator {
     }
 
     func error(for shortcut: GlobalShortcut) -> GlobalShortcutError? {
+        // Command and Command-Shift combinations commonly belong to other
+        // apps' menus, which macOS's system shortcut list does not include.
+        guard !shortcut.modifiers.intersection([.option, .control]).isEmpty else {
+            return .requiresOptionOrControl
+        }
+
         switch systemShortcuts() {
         case .failure(let error):
             return error

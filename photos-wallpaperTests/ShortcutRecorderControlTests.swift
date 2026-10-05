@@ -26,6 +26,9 @@ extension PhotosWallpaperTests {
         #expect(window.makeFirstResponder(recorder))
         #expect(recorder.performKeyEquivalent(with: event))
         #expect(recordings == [GlobalShortcut(keyCode: 2, modifiers: [.command])!])
+        // Keep rejected bindings visible so the picker can explain why Save is disabled.
+        let validator = GlobalShortcutValidator(systemShortcuts: { .success([]) }, mainMenu: { nil })
+        #expect(validator.error(for: recordings[0]) == .requiresOptionOrControl)
         #expect(recorder.record(.defaultShortcut))
         #expect(recordings.last == .defaultShortcut)
         #expect(window.makeFirstResponder(other))
