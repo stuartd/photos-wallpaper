@@ -61,8 +61,8 @@ enum CurrentWallpaperAlbumStrings {
     static let openAlbumButtonTitle = "Open Album"
 
     static let currentWallpaperNotSetTitle = "The current wallpaper was not set by Photos Wallpaper"
-    static let currentWallpaperNotSetMessage = "Only wallpapers set by Photos Wallpaper can be added to the album."
-    static let noWallpaperSetThisSessionTitle = "No wallpaper set in this session"
+    static let currentWallpaperNotSetMessage = "Only wallpapers set by Photos Wallpaper can be added to the Photos Wallpaper album."
+    static let noWallpaperSetThisSessionTitle = "No wallpaper has been set in this session"
     static let noWallpaperSetThisSessionMessage = "Photos Wallpaper has not set a wallpaper since it launched, so there is nothing to add."
     static let photosAccessNeededTitle = "Photos access needed"
     static let waitingForPhotosAccessMessage = "Approve the Photos access request to continue."
