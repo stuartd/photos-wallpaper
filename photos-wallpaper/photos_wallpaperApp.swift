@@ -105,7 +105,6 @@ struct photos_wallpaperApp: App {
     @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var currentWallpaperAlbumController: CurrentWallpaperAlbumController
     @StateObject private var loginItemManager = LoginItemManager()
-    @State private var isAboutPanelOpen = false
     @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
     @State private var isStartAtLoginPromptRetryScheduled = false
     private let historyLogger: WallpaperHistoryLogger
@@ -228,8 +227,6 @@ struct photos_wallpaperApp: App {
 
             Button("About Photos Wallpaper") {
                 prepareForUserInitiatedSurface()
-                isAboutPanelOpen = true
-                defer { isAboutPanelOpen = false }
                 documentOpener.openAboutPanel()
             }
             .disabled(isMenuInteractionDisabled)
@@ -244,8 +241,7 @@ struct photos_wallpaperApp: App {
     }
 
     private var isMenuInteractionDisabled: Bool {
-        isAboutPanelOpen
-            || currentWallpaperAlbumController.isBusy
+        currentWallpaperAlbumController.isBusy
             || currentWallpaperAlbumController.isPresentingAlert
             || currentWallpaperAlbumController.isWaitingForAuthorization
     }

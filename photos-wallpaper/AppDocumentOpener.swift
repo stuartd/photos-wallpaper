@@ -31,61 +31,26 @@ final class AppDocumentOpener: AppDocumentOpening {
     }
 
     func openAboutPanel() {
-        let iconView = NSImageView(image: appIconImage)
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.imageScaling = .scaleProportionallyUpOrDown
-
-        let titleLabel = NSTextField(labelWithString: "Photos Wallpaper")
-        titleLabel.font = .boldSystemFont(ofSize: 24)
-        titleLabel.alignment = .center
-
-        let versionLabel = NSTextField(labelWithString: aboutVersionText)
-        versionLabel.font = .systemFont(ofSize: 13)
-        versionLabel.textColor = .secondaryLabelColor
-        versionLabel.alignment = .center
-
-        // Blank lines to put this in the centre of the dialog
-        let creditsLabel = NSTextField(wrappingLabelWithString: """
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let credits = NSAttributedString(string: """
         © Stuart Dunkeld 2026
         Rose Hill Solutions
-        
-        
-        
-        
-        
-        """)
-
-        creditsLabel.font = .systemFont(ofSize: 13)
-        creditsLabel.alignment = .center
-        creditsLabel.maximumNumberOfLines = 0
-
-        let stackView = NSStackView(views: [iconView, titleLabel, versionLabel, creditsLabel])
-        stackView.orientation = .vertical
-        stackView.alignment = .centerX
-        stackView.spacing = 8
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-
-        let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 330, height: 205))
-        accessoryView.addSubview(stackView)
-
-        NSLayoutConstraint.activate([
-            iconView.widthAnchor.constraint(equalToConstant: 128),
-            iconView.heightAnchor.constraint(equalToConstant: 128),
-            creditsLabel.widthAnchor.constraint(equalToConstant: 300),
-            stackView.centerXAnchor.constraint(equalTo: accessoryView.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: accessoryView.centerYAnchor),
-            stackView.widthAnchor.constraint(lessThanOrEqualTo: accessoryView.widthAnchor)
+        """, attributes: [
+            .font: NSFont.systemFont(ofSize: 13),
+            .paragraphStyle: paragraphStyle
         ])
 
-        let alert = NSAlert()
-        alert.messageText = ""
-        alert.informativeText = ""
-        alert.icon = NSImage(size: NSSize(width: 1, height: 1))
-        alert.accessoryView = accessoryView
-        alert.addButton(withTitle: "OK")
-
         NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Photos Wallpaper",
+            .applicationIcon: appIconImage,
+            .applicationVersion: aboutVersionText,
+            .version: "",
+            .credits: credits,
+            // The existing copyright is included in the credits above.
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): ""
+        ])
     }
 
     private var appIconImage: NSImage {
