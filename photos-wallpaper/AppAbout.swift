@@ -72,7 +72,7 @@ private struct PhotosWallpaperAboutView: View {
             .foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
-                Text("version: \(version)")
+                Text("Version \(version)")
                 Link("photos-wallpaper.app", destination: URL(string: "https://photos-wallpaper.app")!)
             }
             .font(.system(size: 14))
