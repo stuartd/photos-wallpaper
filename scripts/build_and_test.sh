@@ -15,6 +15,7 @@ xcodebuild clean build \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_DIR" \
   CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+  PHOTOS_WALLPAPER_LOCAL_BUILD=YES \
   GIT_COMMIT="$GIT_COMMIT"
 
 # The optimized Release module still needs testable imports. An ad hoc-signed test
@@ -33,4 +34,5 @@ xcodebuild test \
   -derivedDataPath "$DERIVED_DATA_DIR" \
   CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
   "${TEST_BUILD_SETTINGS[@]}" \
+  PHOTOS_WALLPAPER_LOCAL_BUILD=YES \
   GIT_COMMIT="$GIT_COMMIT"

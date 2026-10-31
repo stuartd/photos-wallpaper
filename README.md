@@ -75,6 +75,10 @@ The Photos Wallpaper name, app icon, screenshots, and other branding assets are 
 
 The test suite covers the app's orchestration layer: scheduling, login prompts, Photos authorization states, screen/session behavior, history logging, and album actions.
 
+The About window uses the same text sizes and spacing as ClipDiff: a 26-point
+app name, 14-point details, and a link to [photos-wallpaper.app](https://photos-wallpaper.app).
+It shows the source commit for local builds and the app version for published builds.
+
 To build and test locally:
 
 ```bash
@@ -96,6 +100,11 @@ To create a local release smoke-test build (not an App Store distribution archiv
 ```bash
 scripts/create-local-release.sh
 ```
+
+Local release builds use Apple Development signing so macOS can recognize the
+app across rebuilds and retain its Photos permission. Set `CODE_SIGN_IDENTITY`
+to use another installed signing certificate. Ad hoc test builds do not preserve
+that identity across rebuilds.
 
 This local release smoke test resets first-run state before opening the app. It
 refuses to continue if the Photos Wallpaper album contains photos. Pass `-f`

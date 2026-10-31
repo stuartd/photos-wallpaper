@@ -31,32 +31,7 @@ final class AppDocumentOpener: AppDocumentOpening {
     }
 
     func openAboutPanel() {
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let credits = NSAttributedString(string: """
-        © Stuart Dunkeld 2026
-        Rose Hill Solutions
-        """, attributes: [
-            .font: NSFont.systemFont(ofSize: 13),
-            .paragraphStyle: paragraphStyle
-        ])
-
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Photos Wallpaper",
-            .applicationIcon: appIconImage,
-            .applicationVersion: aboutVersionText,
-            .version: "",
-            .credits: credits,
-            // The existing copyright is included in the credits above.
-            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): ""
-        ])
-    }
-
-    private var appIconImage: NSImage {
-        NSImage(named: "AppIcon")
-            ?? Bundle.main.image(forResource: "AppIcon")
-            ?? NSApp.applicationIconImage
+        AppAbout.show()
     }
 
     func openPrivacyDocument() {
@@ -134,28 +109,6 @@ final class AppDocumentOpener: AppDocumentOpening {
             debugLog("AppDocumentOpener: failed to open the support URL \(Self.supportURL.absoluteString).")
             return
         }
-    }
-
-    private var aboutVersionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        var details: [String] = []
-        if let build,
-           !build.isEmpty,
-           !build.hasPrefix("$(") {
-            details.append("build \(build)")
-        }
-        if let commit = Bundle.main.object(forInfoDictionaryKey: "GitCommit") as? String,
-           !commit.isEmpty,
-           !commit.hasPrefix("$(") {
-            details.append("commit \(commit)")
-        }
-        #if DEBUG
-        details.append("debug build")
-        #endif
-
-        guard !details.isEmpty else { return "Version \(version)" }
-        return "Version \(version) (\(details.joined(separator: ", ")))"
     }
 
     private func clearPrivacyWindowCloseObserver() {

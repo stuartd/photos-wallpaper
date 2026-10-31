@@ -8,7 +8,8 @@ CONFIGURATION="Release"
 DMG_NAME="${2:-Photos Wallpaper.dmg}"
 
 OUTPUT_DIR="${1:-$REPO_ROOT/releases}"
-CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+# Use a stable identity so macOS can retain Photos permission across local builds.
+CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-Apple Development}"
 DERIVED_DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/photos-wallpaper-release-derived-data.XXXXXX")"
 BUILD_PRODUCTS_DIR="$DERIVED_DATA_DIR/Build/Products/$CONFIGURATION"
 BUILT_APP="$BUILD_PRODUCTS_DIR/$XCODE_APP_BUNDLE_NAME"
@@ -37,6 +38,7 @@ xcodebuild clean build \
     -destination 'platform=macOS' \
     -derivedDataPath "$DERIVED_DATA_DIR" \
     CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+    PHOTOS_WALLPAPER_LOCAL_BUILD=YES \
     GIT_COMMIT="$GIT_COMMIT"
 
 if [[ ! -d "$BUILT_APP" ]]; then

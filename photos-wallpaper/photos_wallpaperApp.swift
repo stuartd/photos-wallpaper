@@ -225,7 +225,7 @@ struct photos_wallpaperApp: App {
             }
             .disabled(isMenuInteractionDisabled)
 
-            Button("About Photos Wallpaper") {
+            Button(AppAbout.title) {
                 prepareForUserInitiatedSurface()
                 documentOpener.openAboutPanel()
             }

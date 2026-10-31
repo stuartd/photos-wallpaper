@@ -37,7 +37,7 @@ KNOWN_DEFAULTS_KEYS=(
 )
 
 git_commit() {
-    git -C "$REPO_ROOT" rev-parse --short HEAD
+    git -C "$REPO_ROOT" rev-parse --short=8 HEAD
 }
 
 generated_wallpaper_cache_files() {
