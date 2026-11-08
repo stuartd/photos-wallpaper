@@ -406,7 +406,7 @@ enum CycleFrequency: String, CaseIterable, Identifiable {
 }
 
 /// The visible shape of a display or photo. Square displays deliberately accept any photo shape.
-enum WallpaperOrientation: Hashable {
+nonisolated enum WallpaperOrientation: Hashable, Sendable {
     case landscape
     case portrait
     case square
@@ -1094,10 +1094,29 @@ enum WallpaperPhotoSelector {
             finishCycle()
             return
         }
+        let screenOrientations = screens.map { WallpaperOrientation(size: $0.pixelSize) }
+        let generation = cycleID
+        // The deadline includes an empty-queue search, so classification cannot hold a cycle open.
+        imageDeadline = imageDeadlineScheduler.scheduledTimer(interval: 60, repeats: false) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.cycleID == generation, self.isCycleInProgress else { return }
+                if trigger == .manual && !self.cycleSucceeded { self.notifier.notifyWallpaperChangeFailed() }
+                self.cancelCycle()
+            }
+        }
+        let selection = photoManager.requestRandomPhotos(for: screenOrientations) { [weak self] result in
+            guard let self, self.cycleID == generation, self.isCycleInProgress else { return }
+            self.applySelectedPhotos(result, to: screens, trigger: trigger)
+        }
+        if isCycleInProgress && cycleID == generation { imageRequests.append(selection) }
+        else { selection.cancel() }
+    }
+
+    private func applySelectedPhotos(_ result: PhotoSelectionResult, to screens: [NSScreen],
+                                     trigger: WallpaperCycleTrigger) {
         let assets: [PHAsset]
         let screenSizes = screens.map(\.pixelSize)
-        let screenOrientations = screenSizes.map(WallpaperOrientation.init(size:))
-        switch photoManager.getRandomPhotos(for: screenOrientations) {
+        switch result {
         case .photos(let selectedAssets):
             isWaitingForPhotoAuthorization = false
             if selectedAssets.isEmpty {
@@ -1117,6 +1136,11 @@ enum WallpaperPhotoSelector {
             notifyUnavailablePhotos(reason: .permissionDenied, trigger: trigger)
             finishCycle()
             return
+        case .noEligiblePhotos:
+            isWaitingForPhotoAuthorization = false
+            debugLog("WallpaperCycleController: no eligible photo found in the bounded search; keeping current wallpapers.")
+            finishCycle()
+            return
         case .unavailable:
             isWaitingForPhotoAuthorization = false
             notifyUnavailablePhotos(reason: .noPhotosAvailable, trigger: trigger)
@@ -1133,16 +1157,6 @@ enum WallpaperPhotoSelector {
         let screenCount = screenAssetPairs.count
         let generation = cycleID
         outstandingImages = Set(screenAssetPairs.map(\.offset))
-        imageDeadline = imageDeadlineScheduler.scheduledTimer(interval: 60, repeats: false) { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, self.cycleID == generation, self.isCycleInProgress else { return }
-                debugLog("WallpaperCycleController: image deadline expired; cancelling outstanding requests.")
-                if trigger == .manual && !self.cycleSucceeded {
-                    self.notifier.notifyWallpaperChangeFailed()
-                }
-                self.cancelCycle()
-            }
-        }
         for (index, pair) in screenAssetPairs {
             let (screen, asset) = pair
             let displayID = screen.wallpaperDisplayIdentifier

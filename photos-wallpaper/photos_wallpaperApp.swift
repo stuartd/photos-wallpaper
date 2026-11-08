@@ -105,6 +105,7 @@ struct photos_wallpaperApp: App {
     @StateObject private var cycleController: WallpaperCycleController
     @StateObject private var currentWallpaperAlbumController: CurrentWallpaperAlbumController
     @StateObject private var loginItemManager = LoginItemManager()
+    @AppStorage(PhotoFilterSettings.defaultsKey) private var skipUtilityPhotos = true
     @State private var pendingStartAtLoginPromptFrequency: CycleFrequency?
     @State private var isStartAtLoginPromptRetryScheduled = false
     private let historyLogger: WallpaperHistoryLogger
@@ -188,6 +189,12 @@ struct photos_wallpaperApp: App {
             .disabled(isMenuInteractionDisabled)
 
             Divider()
+
+            Toggle(PhotoFilterSettings.menuTitle, isOn: $skipUtilityPhotos)
+                .onChange(of: skipUtilityPhotos) { _, _ in
+                    PhotoManager.shared.filterSettingsDidChange()
+                }
+                .disabled(isMenuInteractionDisabled)
 
             Toggle("Start at Login", isOn: startAtLoginBinding)
                 .disabled(isMenuInteractionDisabled)
