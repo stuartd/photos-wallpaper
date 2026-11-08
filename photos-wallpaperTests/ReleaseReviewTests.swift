@@ -9,30 +9,60 @@ extension PhotosWallpaperTests {
         fixture.photos.delaysPhotoSelection = true
         let controller = fixture.controller()
         controller.triggerNow()
-        fixture.deadlines.createdTimers.last?.fire()
-        await Task.yield()
-        #expect(fixture.photos.cancelledSelectionRequestCount == 1)
+        #expect(await waitForCondition { fixture.photos.getRandomPhotosCallCount == 1 })
+        let deadline = try #require(fixture.deadlines.createdTimers.last)
+        deadline.fire()
+        #expect(await waitForCondition { fixture.photos.cancelledSelectionRequestCount == 1 })
         fixture.photos.completePendingPhotoSelections()
         #expect(fixture.photos.requestedAssets.isEmpty)
         #expect(fixture.photos.wallpaperAssignments.isEmpty)
     }
 
-    @Test func secondManualRequestCancelsPendingSelection() throws {
+    @Test func secondManualRequestCancelsPendingSelection() async throws {
         let fixture = try ReviewCycleFixture()
         fixture.photos.delaysPhotoSelection = true
         let controller = fixture.controller()
         controller.triggerNow()
+        #expect(await waitForCondition { fixture.photos.getRandomPhotosCallCount == 1 })
         controller.triggerNow()
-        fixture.photos.completePendingPhotoSelections()
+        #expect(await waitForCondition { fixture.photos.getRandomPhotosCallCount == 2 })
         #expect(fixture.photos.cancelledSelectionRequestCount == 1)
+        fixture.photos.completeFirstPhotoSelection()
         #expect(fixture.photos.requestedAssets.isEmpty)
+        fixture.photos.completeFirstPhotoSelection()
+        #expect(fixture.photos.requestedAssets.count == 1)
+        fixture.photos.completePendingImageRequests()
+        #expect(fixture.photos.wallpaperAssignments.count == 1)
     }
 
-    @Test func noEligiblePhotoKeepsWallpaperWithoutEmptyLibraryWarning() throws {
+    @Test func repeatedManualRequestsApplyOnlyTheLatestSelection() async throws {
+        let fixture = try ReviewCycleFixture()
+        fixture.photos.delaysPhotoSelection = true
+        let controller = fixture.controller()
+        for requestCount in 1...25 {
+            controller.triggerNow()
+            #expect(await waitForCondition { fixture.photos.getRandomPhotosCallCount == requestCount })
+        }
+        #expect(fixture.photos.cancelledSelectionRequestCount == 24)
+        fixture.photos.completePendingPhotoSelections()
+        #expect(fixture.photos.requestedAssets.count == 1)
+        fixture.photos.completePendingImageRequests()
+        #expect(fixture.photos.wallpaperAssignments.count == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func noEligiblePhotoKeepsWallpaperWithoutEmptyLibraryWarning(scheduled: Bool) async throws {
         let fixture = try ReviewCycleFixture()
         fixture.photos.photoSelectionOverride = .noEligiblePhotos
         let controller = fixture.controller()
-        controller.triggerNow()
+        if scheduled {
+            controller.frequency = .minute
+            let timer = try #require(fixture.timers.createdTimers.last)
+            timer.fire()
+        } else {
+            controller.triggerNow()
+        }
+        #expect(await waitForCondition { fixture.photos.getRandomPhotosCallCount == 1 })
         #expect(fixture.photos.requestedAssets.isEmpty)
         #expect(fixture.photos.wallpaperAssignments.isEmpty)
         #expect(fixture.notifier.noPhotosNotificationCount == 0)

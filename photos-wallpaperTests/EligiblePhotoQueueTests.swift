@@ -81,6 +81,33 @@ extension PhotosWallpaperTests {
         #expect(queue.ready.isEmpty)
     }
 
+    @Test func cancelledSelectionDoesNotConsumeLateEligibleReference() async {
+        let source = FakeWallpaperCandidateSource(photos: [candidate("slow")], blocked: "slow")
+        let queue = EligiblePhotoQueue(source: source)
+        let selection = Task { await queue.take(for: [.landscape]) }
+        await source.waitForCalls(atLeast: 1)
+        selection.cancel()
+        await source.release()
+        #expect(await selection.value.isEmpty)
+        #expect(queue.ready.map(\.identifier) == ["slow"])
+        queue.invalidate()
+    }
+
+    @Test func failedClassificationCanBeRetriedAfterPhotoIsEdited() async {
+        let source = FakeWallpaperCandidateSource(photos: [candidate("edited")], failures: ["edited"])
+        let queue = EligiblePhotoQueue(source: source)
+        #expect(await queue.take(for: [.landscape]).isEmpty)
+        queue.invalidate()
+        #expect(await queue.take(for: [.landscape]).isEmpty)
+        #expect(await source.classifications.count == 1)
+        let edited = candidate("edited", modified: Date(timeIntervalSince1970: 1))
+        await source.edit(edited)
+        queue.invalidate()
+        #expect(await queue.take(for: [.landscape]) == [edited])
+        #expect(await source.classifications.count == 2)
+        queue.invalidate()
+    }
+
     @Test func queuePrefersMatchingOrientationAmongEligibleReferences() async {
         let source = FakeWallpaperCandidateSource(photos: [candidate("wide"), candidate("tall", orientation: .portrait)])
         let queue = EligiblePhotoQueue(source: source)
@@ -126,9 +153,9 @@ private func candidate(_ identifier: String, orientation: WallpaperOrientation =
 }
 
 private actor FakeWallpaperCandidateSource: WallpaperCandidateProviding {
-    let photos: [WallpaperPhotoCandidate]
+    var photos: [WallpaperPhotoCandidate]
     let utility: Set<String>
-    let failures: Set<String>
+    var failures: Set<String>
     let blocked: String?
     private var hidden: Set<String> = []
     private var gate: CheckedContinuation<Void, Never>?
@@ -153,6 +180,10 @@ private actor FakeWallpaperCandidateSource: WallpaperCandidateProviding {
         return failures.contains(candidate.identifier) ? nil : utility.contains(candidate.identifier)
     }
     func hide(_ identifiers: Set<String>) { hidden = identifiers }
+    func edit(_ candidate: WallpaperPhotoCandidate) {
+        photos = photos.map { $0.identifier == candidate.identifier ? candidate : $0 }
+        failures.remove(candidate.identifier)
+    }
     func release() { released = true; gate?.resume(); gate = nil }
     func waitForCalls(atLeast count: Int) async {
         for _ in 0..<100 {

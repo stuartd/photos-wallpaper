@@ -8,7 +8,8 @@ nonisolated struct WallpaperPhotoCandidate: Equatable, Sendable {
     let isScreenshot: Bool
 }
 
-protocol WallpaperCandidateProviding: Sendable {
+// The app target defaults to MainActor; providers use their own actors for Photos/Vision work.
+nonisolated protocol WallpaperCandidateProviding: Sendable {
     func candidates(limit: Int, excluding: Set<String>) async -> [WallpaperPhotoCandidate]
     func isUtility(_ candidate: WallpaperPhotoCandidate) async -> Bool?
     func currentCandidates(_ candidates: [WallpaperPhotoCandidate]) async -> [WallpaperPhotoCandidate]
