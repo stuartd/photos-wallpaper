@@ -4,6 +4,7 @@ import AppKit
 
 enum PhotoSelectionResult {
     case photos([PHAsset])
+    case noEligiblePhotos
     case waitingForAuthorization
     case permissionDenied
     case unavailable
@@ -53,6 +54,7 @@ enum PhotosWallpaperAlbumAddResult: Equatable {
 @MainActor
 protocol PhotoManaging: AnyObject {
     func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void)
+    func requestRandomPhotos(for displayOrientations: [WallpaperOrientation], completion: @escaping @MainActor (PhotoSelectionResult) -> Void) -> PhotoImageRequest
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult
     func identifier(for asset: PHAsset) -> String
@@ -63,6 +65,23 @@ protocol PhotoManaging: AnyObject {
     func requestImage(for asset: PHAsset, targetSize: CGSize, completion: @escaping @MainActor (NSImage?) -> Void) -> PhotoImageRequest
     func addToPhotosWallpaperAlbum(asset: PHAsset, completion: @escaping (Result<PhotosWallpaperAlbumAddResult, Error>) -> Void)
     func setImageAsWallpaper(_ image: NSImage, from asset: PHAsset, for screen: NSScreen) -> Bool
+}
+
+extension PhotoManaging {
+    /// Keeps synchronous test fakes and unfiltered providers lightweight.
+    func requestRandomPhotos(for displayOrientations: [WallpaperOrientation],
+                             completion: @escaping @MainActor (PhotoSelectionResult) -> Void) -> PhotoImageRequest {
+        completion(getRandomPhotos(for: displayOrientations))
+        return PhotoImageRequest()
+    }
+}
+
+enum PhotoFilterSettings {
+    static let defaultsKey = "skipScreenshotsReceiptsAndDocuments"
+    static let menuTitle = "Skip Screenshots, Receipts and Documents"
+    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: defaultsKey) == nil || defaults.bool(forKey: defaultsKey)
+    }
 }
 
 /// Bridges Photos.framework and wallpaper setting.
@@ -82,6 +101,8 @@ final class PhotoManager: PhotoManaging {
     private let wallpaperManager: WallpaperManaging
     private let screenProvider: ScreenProviding
     private let cacheDirectoryURL: URL?
+    private lazy var eligiblePhotos = EligiblePhotoQueue(source: PhotoUtilityClassifier())
+    private var libraryObserver: WallpaperLibraryChangeObserver?
     private var allPhotos: PHFetchResult<PHAsset>?
     private var hasRequestedPhotoAccess = false
     private let albumQueue = AlbumRequestQueue()
@@ -95,12 +116,79 @@ final class PhotoManager: PhotoManaging {
         self.wallpaperManager = wallpaperManager ?? WallpaperManager()
         self.screenProvider = screenProvider ?? AppKitScreenProvider()
         self.cacheDirectoryURL = cacheDirectoryURL
+        Task { [weak self] in self?.prepareEligiblePhotosIfAuthorized() }
     }
 
     func addPhotoAuthorizationChangeHandler(_ handler: @escaping () -> Void) {
         photoAuthorizationChangeHandlers.append(handler)
     }
 
+    func filterSettingsDidChange() {
+        eligiblePhotos.invalidate()
+        prepareEligiblePhotosIfAuthorized()
+    }
+
+    private func prepareEligiblePhotosIfAuthorized() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return }
+        if libraryObserver == nil {
+            let observer = WallpaperLibraryChangeObserver { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.eligiblePhotos.invalidate()
+                    self?.prepareEligiblePhotosIfAuthorized()
+                }
+            }
+            PHPhotoLibrary.shared().register(observer)
+            libraryObserver = observer
+        }
+        if PhotoFilterSettings.isEnabled() { eligiblePhotos.prewarm() }
+    }
+
+    func requestRandomPhotos(for displayOrientations: [WallpaperOrientation],
+                             completion: @escaping @MainActor (PhotoSelectionResult) -> Void) -> PhotoImageRequest {
+        guard PhotoFilterSettings.isEnabled() else {
+            completion(getRandomPhotos(for: displayOrientations))
+            return PhotoImageRequest()
+        }
+        switch requestPhotoAccessIfNeeded() {
+        case .waitingForAuthorization:
+            eligiblePhotos.invalidate()
+            completion(.waitingForAuthorization)
+            return PhotoImageRequest()
+        case .permissionDenied:
+            eligiblePhotos.invalidate()
+            completion(.permissionDenied)
+            return PhotoImageRequest()
+        case .unavailable:
+            eligiblePhotos.invalidate()
+            completion(.unavailable)
+            return PhotoImageRequest()
+        case .ready: break
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let selected = await eligiblePhotos.take(for: displayOrientations)
+            guard !Task.isCancelled else { return }
+            // Recheck authorization after asynchronous classification, before resolving handles.
+            switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+            case .authorized, .limited:
+                let identifiers = selected.map(\.identifier)
+                let found = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
+                var byIdentifier: [String: PHAsset] = [:]
+                found.enumerateObjects { asset, _, _ in byIdentifier[asset.localIdentifier] = asset }
+                let assets = identifiers.compactMap { byIdentifier[$0] }
+                // Preserve the 1:1 screen mapping if a photo was deleted during selection.
+                completion(assets.count == displayOrientations.count && !assets.isEmpty
+                    ? .photos(assets) : .noEligiblePhotos)
+            case .notDetermined: completion(.waitingForAuthorization)
+            case .denied, .restricted: completion(.permissionDenied)
+            @unknown default: completion(.unavailable)
+            }
+        }
+        return PhotoImageRequest { task.cancel() }
+    }
+
+    /// Unfiltered path used when the screenshot/utility setting is off.
     /// Returns one asset per connected display, preferring each display's visible orientation from
     /// a bounded random sample. Square displays can use any photo shape.
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult {
@@ -524,6 +612,7 @@ final class PhotoManager: PhotoManaging {
     func requestPhotoAccessIfNeeded() -> PhotoAccessPreflightResult {
         switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
         case .authorized, .limited:
+            prepareEligiblePhotosIfAuthorized()
             return .ready
         case .notDetermined:
             break

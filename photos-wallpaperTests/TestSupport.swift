@@ -38,6 +38,9 @@ final class FakePhotoManager: PhotoManaging {
     private var pendingImageCompletions: [@MainActor (NSImage?) -> Void] = []
     private var photoAuthorizationChangeHandlers: [() -> Void] = []
     private(set) var cancelledImageRequestCount = 0
+    var delaysPhotoSelection = false
+    private var pendingPhotoSelections: [@MainActor () -> Void] = []
+    private(set) var cancelledSelectionRequestCount = 0
     var delaysDisplayNames = false
     var pendingDisplayNames: [() -> Void] = []
     private(set) var getRandomPhotosCallCount = 0
@@ -83,6 +86,23 @@ final class FakePhotoManager: PhotoManaging {
 
     func notifyPhotoAuthorizationDidChange() {
         photoAuthorizationChangeHandlers.forEach { $0() }
+    }
+
+    func requestRandomPhotos(for displayOrientations: [WallpaperOrientation],
+                             completion: @escaping @MainActor (PhotoSelectionResult) -> Void) -> PhotoImageRequest {
+        let result = getRandomPhotos(for: displayOrientations)
+        guard delaysPhotoSelection else {
+            completion(result)
+            return PhotoImageRequest()
+        }
+        pendingPhotoSelections.append { completion(result) }
+        return PhotoImageRequest { [weak self] in self?.cancelledSelectionRequestCount += 1 }
+    }
+
+    func completePendingPhotoSelections() {
+        let pending = pendingPhotoSelections
+        pendingPhotoSelections.removeAll()
+        pending.forEach { $0() }
     }
 
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult {

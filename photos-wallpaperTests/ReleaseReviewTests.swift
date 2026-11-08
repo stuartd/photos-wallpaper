@@ -4,6 +4,40 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
+    @Test func selectionDeadlineCancelsSearchAndIgnoresLateSelection() async throws {
+        let fixture = try ReviewCycleFixture()
+        fixture.photos.delaysPhotoSelection = true
+        let controller = fixture.controller()
+        controller.triggerNow()
+        fixture.deadlines.createdTimers.last?.fire()
+        await Task.yield()
+        #expect(fixture.photos.cancelledSelectionRequestCount == 1)
+        fixture.photos.completePendingPhotoSelections()
+        #expect(fixture.photos.requestedAssets.isEmpty)
+        #expect(fixture.photos.wallpaperAssignments.isEmpty)
+    }
+
+    @Test func secondManualRequestCancelsPendingSelection() throws {
+        let fixture = try ReviewCycleFixture()
+        fixture.photos.delaysPhotoSelection = true
+        let controller = fixture.controller()
+        controller.triggerNow()
+        controller.triggerNow()
+        fixture.photos.completePendingPhotoSelections()
+        #expect(fixture.photos.cancelledSelectionRequestCount == 1)
+        #expect(fixture.photos.requestedAssets.isEmpty)
+    }
+
+    @Test func noEligiblePhotoKeepsWallpaperWithoutEmptyLibraryWarning() throws {
+        let fixture = try ReviewCycleFixture()
+        fixture.photos.photoSelectionOverride = .noEligiblePhotos
+        let controller = fixture.controller()
+        controller.triggerNow()
+        #expect(fixture.photos.requestedAssets.isEmpty)
+        #expect(fixture.photos.wallpaperAssignments.isEmpty)
+        #expect(fixture.notifier.noPhotosNotificationCount == 0)
+    }
+
     @Test func imageDeadlineReleasesCycleAndIgnoresLateCompletion() async throws {
         let fixture = try ReviewCycleFixture()
         let controller = fixture.controller()
