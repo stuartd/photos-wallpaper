@@ -78,7 +78,7 @@ extension PhotoManaging {
 
 enum PhotoFilterSettings {
     static let defaultsKey = "skipScreenshotsReceiptsAndDocuments"
-    static let menuTitle = "Skip Screenshots, Receipts and Documents"
+    static let menuTitle = "Skip Screenshots and Receipts"
     static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: defaultsKey) == nil || defaults.bool(forKey: defaultsKey)
     }
