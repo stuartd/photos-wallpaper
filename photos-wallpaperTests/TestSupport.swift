@@ -105,6 +105,11 @@ final class FakePhotoManager: PhotoManaging {
         pending.forEach { $0() }
     }
 
+    func completeFirstPhotoSelection() {
+        guard !pendingPhotoSelections.isEmpty else { return }
+        pendingPhotoSelections.removeFirst()()
+    }
+
     func getRandomPhotos(for displayOrientations: [WallpaperOrientation]) -> PhotoSelectionResult {
         getRandomPhotosCallCount += 1
         requestedPhotoCount = displayOrientations.count
