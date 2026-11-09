@@ -3,15 +3,6 @@ import Testing
 @testable import photos_wallpaper
 
 extension PhotosWallpaperTests {
-    @Test func utilityFilterDefaultsOnAndCanBeDisabled() throws {
-        let name = "PhotoFilterTests-\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
-        #expect(PhotoFilterSettings.isEnabled(in: defaults))
-        defaults.set(false, forKey: PhotoFilterSettings.defaultsKey)
-        #expect(!PhotoFilterSettings.isEnabled(in: defaults))
-    }
-
     @Test func queueHoldsTenReferencesAndRefillsAfterConsumption() async {
         let source = FakeWallpaperCandidateSource(photos: (0..<30).map { candidate("photo-\($0)") })
         let queue = EligiblePhotoQueue(source: source)

@@ -28,7 +28,6 @@ If you then choose "Open Album", Photos Wallpaper asks Photos to display the Pho
 The app stores a few settings locally on your Mac:
 
 - the wallpaper refresh frequency you selected
-- whether to skip screenshots, receipts and documents
 - your keyboard shortcut and the identifier of the Photos Wallpaper album
 - whether the app should start at login, if you enable that option
 - local wallpaper history
@@ -36,9 +35,9 @@ The app stores a few settings locally on your Mac:
 
 ## Screenshot and Utility Filtering
 
-"Skip Screenshots and Receipts" is enabled by default and applies to scheduled and manual changes. The app excludes screenshots using Photos metadata and uses Apple's Vision framework on-device to identify utility images such as receipts and documents. This is a best-effort filter; aesthetic quality scores do not affect selection. Vision utility classification requires macOS 15 or later; on older supported Macs, only screenshot exclusion is available.
+The app filters screenshots, receipts and documents from all scheduled and manual wallpaper changes. It excludes screenshots using Photos metadata and uses Apple's Vision framework on-device to identify utility images such as receipts and documents. This is a best-effort filter; aesthetic quality scores do not affect selection. Vision utility classification requires macOS 15 or later; on older supported Macs, only screenshot exclusion is available.
 
-Classification uses a temporary, upright rendition up to 512 pixels from Photos. If needed, Photos may download it through your existing iCloud Photos settings. The app keeps up to ten eligible photo references ready for rotation; it does not retain these classification images. Successful utility classifications are cached locally, with the Photos asset identifier and last-edit date, in a bounded cache. Edited photos can be classified again. Failed classifications are skipped without retrying during the current session. Turning the setting off restores unrestricted random selection.
+Classification uses a temporary, upright rendition up to 512 pixels from Photos. If needed, Photos may download it through your existing iCloud Photos settings. The app keeps up to ten eligible photo references ready for rotation; it does not retain these classification images. Successful utility classifications are cached locally, with the Photos asset identifier and last-edit date, in a bounded cache. Edited photos can be classified again. Failed classifications are skipped without retrying during the current session.
 
 ## Login and Wake Scheduling
 

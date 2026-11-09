@@ -20,7 +20,7 @@ The feature was removed in macOS 26 (Tahoe).[^2]
 - Runs from the macOS menu bar
 - Selects random images from your Photos library and sets them as wallpaper
 - Supports multiple displays
-- Skips screenshots, receipts and documents by default, with an option to turn the best-effort filter off. Selection uses on-device utility classification on macOS 15 or later, never aesthetic quality scores. Older supported Macs exclude screenshots only. A rolling queue keeps up to ten photo references ready without retaining image data.
+- Skips screenshots, receipts and documents using a best-effort filter. Selection uses on-device utility classification on macOS 15 or later, never aesthetic quality scores. Older supported Macs exclude screenshots only. A rolling queue keeps up to ten photo references ready without retaining image data.
 - You can change your wallpaper on demand, or use a preset wallpaper schedule
 - Change wallpaper from any app with Control–Option–W. Choose **Change Keyboard Shortcut…** in the menu to set your own shortcut or restore the default. Custom shortcuts must include Option or Control; Command and Shift are optional.
 - You can add the current wallpaper photo to a "Photos Wallpaper" album in Photos, and then use that to see the photo in context in your library.
